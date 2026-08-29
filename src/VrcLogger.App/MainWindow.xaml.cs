@@ -47,7 +47,7 @@ public partial class MainWindow : Window
         _tray.DoubleClick += (_, _) => ShowFromTray();
     }
 
-    private void ShowFromTray()
+    public void ShowFromTray()
     {
         Show();
         WindowState = WindowState.Normal;
