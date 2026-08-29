@@ -1,0 +1,29 @@
+<UserControl x:Class="VrcLogger.App.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Margin="12" MaxWidth="700" HorizontalAlignment="Left">
+        <TextBlock Text="ログフォルダ" FontWeight="Bold" Margin="0,0,0,4" />
+        <ListBox ItemsSource="{Binding LogFolders}" SelectedItem="{Binding SelectedFolder}" Height="140" />
+        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+            <Button Content="追加..." Padding="10,3" Command="{Binding AddFolderCommand}" />
+            <Button Content="削除" Padding="10,3" Margin="6,0,0,0" Command="{Binding RemoveFolderCommand}" />
+        </StackPanel>
+
+        <TextBlock Text="データベースファイル" FontWeight="Bold" Margin="0,16,0,4" />
+        <TextBox Text="{Binding DbPath, UpdateSourceTrigger=PropertyChanged}" />
+        <TextBlock Text="相対パスは設定ファイルのあるフォルダ基準。%VAR% 展開可。" Foreground="#777" FontSize="11" Margin="0,2,0,0" />
+
+        <TextBlock Text="常駐・自動取り込み" FontWeight="Bold" Margin="0,16,0,4" />
+        <StackPanel Orientation="Horizontal">
+            <TextBox Text="{Binding AutoImportIntervalMinutes, UpdateSourceTrigger=PropertyChanged}" Width="60" />
+            <TextBlock Text="分ごとに自動取り込み (0 で無効)" VerticalAlignment="Center" Margin="6,0,0,0" />
+        </StackPanel>
+        <CheckBox Content="閉じるボタンでタスクトレイに常駐する (終了はトレイの右クリックから)"
+                  IsChecked="{Binding MinimizeToTray}" Margin="0,8,0,0" />
+
+        <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+            <Button Content="保存" Padding="16,4" Command="{Binding SaveCommand}" />
+            <TextBlock Text="{Binding SaveStatus}" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="Green" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

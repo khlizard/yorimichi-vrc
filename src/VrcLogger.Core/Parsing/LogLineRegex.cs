@@ -1,0 +1,39 @@
+using System.Text.RegularExpressions;
+
+namespace VrcLogger.Core.Parsing;
+
+public static partial class LogLineRegex
+{
+    [GeneratedRegex(@"^(\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}) (\w+)\s+-\s{2}(.*)$")]
+    public static partial Regex LinePrefix();
+
+    [GeneratedRegex(@"^\[Behaviour\] Entering Room: (.*)$")]
+    public static partial Regex EnteringRoom();
+
+    [GeneratedRegex(@"^\[Behaviour\] Joining (wrld_[0-9a-fA-F\-]+):(\S+)$")]
+    public static partial Regex JoiningWorld();
+
+    // Trailing " (usr_...)$" is anchored so greedy (.*) leaves the LAST usr group
+    // even when the display name itself contains parentheses.
+    [GeneratedRegex(@"^\[Behaviour\] OnPlayerJoined (.*) \((usr_[0-9a-fA-F\-]+)\)$")]
+    public static partial Regex PlayerJoined();
+
+    // Requires a space after OnPlayerLeft so "OnPlayerLeftRoom" does not match.
+    [GeneratedRegex(@"^\[Behaviour\] OnPlayerLeft (.*) \((usr_[0-9a-fA-F\-]+)\)$")]
+    public static partial Regex PlayerLeft();
+
+    [GeneratedRegex(@"^\[Behaviour\] OnLeftRoom$")]
+    public static partial Regex LeftRoom();
+
+    [GeneratedRegex(@"^User Authenticated: (.*) \((usr_[0-9a-fA-F\-]+)\)")]
+    public static partial Regex Authenticated();
+
+    [GeneratedRegex(@"^\[Video Playback\] (?:Attempting to resolve|Resolving) URL '(.*)'$")]
+    public static partial Regex VideoUrl();
+
+    [GeneratedRegex(@"^\[String Download\] Attempting to load String from URL '(.*)'$")]
+    public static partial Regex StringUrl();
+
+    [GeneratedRegex(@"^\[Image Download\] Attempting to load image from URL '(.*)'$")]
+    public static partial Regex ImageUrl();
+}

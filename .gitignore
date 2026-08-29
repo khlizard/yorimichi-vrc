@@ -1,0 +1,13 @@
+bin/
+obj/
+*.user
+vrclog.db
+vrclog.db-wal
+vrclog.db-shm
+*_wpftmp.csproj
+
+# VRChat 実ログ（ユーザーIDなどを含む）
+logs/
+
+# ローカル設定
+vrclogger.settings.json
