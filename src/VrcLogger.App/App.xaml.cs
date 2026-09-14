@@ -27,6 +27,13 @@ public partial class App : Application
 
         base.OnStartup(e);
 
+        // Keep the app alive on unexpected UI-thread exceptions; show what happened instead of vanishing.
+        DispatcherUnhandledException += (_, args) =>
+        {
+            MessageBox.Show(args.Exception.ToString(), "VrcLogger - エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+            args.Handled = true;
+        };
+
         var window = new MainWindow();
         MainWindow = window;
 

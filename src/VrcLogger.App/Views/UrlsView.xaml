@@ -17,12 +17,19 @@
         <DataGrid x:Name="ResultGrid" ItemsSource="{Binding Results}" AutoGenerateColumns="False"
                   IsReadOnly="True" SelectionMode="Single"
                   GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#EEE"
-                  MouseDoubleClick="ResultGrid_MouseDoubleClick">
+                  MouseDoubleClick="ResultGrid_MouseDoubleClick"
+                  PreviewKeyDown="UrlGrid_PreviewKeyDown">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="URL をコピー" Click="CopyUrl_Click" InputGestureText="Ctrl+C" />
+                    <MenuItem Header="行をコピー (時刻・種別・URL)" Click="CopyRow_Click" />
+                </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="時刻" Binding="{Binding EventTime}" Width="150" />
                 <DataGridTextColumn Header="種別" Binding="{Binding Kind}" Width="60" />
                 <DataGridTextColumn Header="ワールド" Binding="{Binding WorldName}" Width="200" />
-                <DataGridTemplateColumn Header="URL" Width="*">
+                <DataGridTemplateColumn Header="URL" Width="*" ClipboardContentBinding="{Binding Url}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock TextTrimming="CharacterEllipsis">
