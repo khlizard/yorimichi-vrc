@@ -4,9 +4,44 @@ using VrcLogger.Core.Parsing;
 
 namespace VrcLogger.Core.Data;
 
-public sealed class ImportService(SqliteConnection conn)
+public sealed class ImportService(SqliteConnection conn, ParseOptions? parseOptions = null)
 {
     public sealed record ImportSummary(int Scanned, int Imported, int Skipped);
+
+    public sealed record PruneSummary(int ExpiredDeleted, int NoiseDeleted)
+    {
+        public int Total => ExpiredDeleted + NoiseDeleted;
+    }
+
+    /// <summary>
+    /// Deletes raw_events older than <paramref name="retentionDays"/> (0 = keep forever) and
+    /// rows matching the noise patterns (so an existing database catches up with the parser's
+    /// exclusions). Structured tables are never touched. Caller decides whether to VACUUM.
+    /// </summary>
+    public PruneSummary Prune(int retentionDays, IEnumerable<string> noisePatterns, DateTime? now = null)
+    {
+        using var tx = conn.BeginTransaction();
+        var expired = 0;
+        if (retentionDays > 0)
+        {
+            var cutoff = Db.Ts((now ?? DateTime.Now).AddDays(-retentionDays));
+            expired = conn.Execute("DELETE FROM raw_events WHERE event_time < @cutoff", new { cutoff }, tx);
+        }
+        var noise = 0;
+        foreach (var p in noisePatterns)
+        {
+            if (string.IsNullOrEmpty(p))
+                continue;
+            var contains = p[0] == '*';
+            var body = contains ? p[1..] : p;
+            if (body.Length == 0)
+                continue;
+            var pattern = (contains ? "%" : "") + Db.EscapeLike(body) + "%";
+            noise += conn.Execute("DELETE FROM raw_events WHERE message LIKE @pattern ESCAPE '\\'", new { pattern }, tx);
+        }
+        tx.Commit();
+        return new PruneSummary(expired, noise);
+    }
 
     /// <summary>Scans the given folders for output_log_*.txt and imports new or grown files.</summary>
     public ImportSummary ImportFolders(IEnumerable<string> folders, IProgress<string>? progress = null)
@@ -40,6 +75,12 @@ public sealed class ImportService(SqliteConnection conn)
         return new ImportSummary(scanned, imported, skipped);
     }
 
+    /// <summary>
+    /// Marks every known file as not yet imported so the next <see cref="ImportFolders"/> reparses
+    /// all of them (e.g. after the parser learned to extract new event types).
+    /// </summary>
+    public int MarkAllForReimport() => conn.Execute("UPDATE log_files SET last_size = 0");
+
     /// <summary>Returns true if the file was (re)imported, false if unchanged.</summary>
     public bool ImportFile(string path, IProgress<string>? progress = null)
     {
@@ -57,7 +98,7 @@ public sealed class ImportService(SqliteConnection conn)
         progress?.Report($"取り込み中: {name}");
         ParseResult result;
         using (var reader = new StreamReader(stream))
-            result = LogParser.Parse(reader);
+            result = LogParser.Parse(reader, parseOptions);
 
         using var tx = conn.BeginTransaction();
         if (existing is { } grown)
@@ -115,6 +156,32 @@ public sealed class ImportService(SqliteConnection conn)
 
         foreach (var u in result.OrphanUrlEvents)
             InsertUrl(tx, null, fileId, u);
+
+        // Notifications are not tied to a file: the same notification id is re-logged on every
+        // login, so it may appear in several files and must survive any one of them being reimported.
+        foreach (var n in result.Notifications)
+            conn.Execute("""
+                INSERT INTO notifications (notification_id, kind, sender_user_id, sender_name, message, details, created_at_utc, event_time)
+                VALUES (@NotificationId, @Kind, @SenderUserId, @SenderName, @Message, @Details, @CreatedAtUtc, @time)
+                ON CONFLICT(notification_id) DO UPDATE SET event_time = min(event_time, excluded.event_time)
+                """, new { n.NotificationId, n.Kind, n.SenderUserId, n.SenderName, n.Message, n.Details, n.CreatedAtUtc, time = Db.Ts(n.Time) }, tx);
+
+        foreach (var (notificationId, t) in result.AnsweredNotifications)
+            conn.Execute("""
+                UPDATE notifications SET accepted_at = coalesce(accepted_at, @time) WHERE notification_id = @notificationId
+                """, new { notificationId, time = Db.Ts(t) }, tx);
+
+        foreach (var me in result.ModerationEvents)
+            conn.Execute("""
+                INSERT INTO moderation_events (file_id, visit_id, kind, target_name, event_time)
+                VALUES (@fileId, @visitId, @Kind, @TargetName, @time)
+                """,
+                new
+                {
+                    fileId,
+                    visitId = me.VisitIndex is { } mvi ? visitIds[mvi] : (long?)null,
+                    me.Kind, me.TargetName, time = Db.Ts(me.Time),
+                }, tx);
 
         foreach (var raw in result.RawEvents)
             conn.Execute("""

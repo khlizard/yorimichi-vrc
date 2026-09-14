@@ -29,6 +29,9 @@
             <TabItem Header="URL">
                 <views:UrlsView DataContext="{Binding Urls}" />
             </TabItem>
+            <TabItem Header="通知">
+                <views:NotificationsView DataContext="{Binding Notifications}" />
+            </TabItem>
             <TabItem Header="生ログ">
                 <views:LogsView DataContext="{Binding Logs}" />
             </TabItem>

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using VrcLogger.Core.Parsing;
 
 namespace VrcLogger.App.Services;
 
@@ -13,6 +14,14 @@ public sealed class AppSettings
 
     /// <summary>閉じるボタンで終了せずタスクトレイに常駐する。</summary>
     public bool MinimizeToTray { get; set; } = true;
+
+    /// <summary>生ログ (raw_events) の保持日数。0 で無制限。</summary>
+    public int RawLogRetentionDays { get; set; } = 30;
+
+    /// <summary>生ログから除外する行 (前方一致。先頭 '*' で部分一致)。</summary>
+    public List<string> RawLogNoisePatterns { get; set; } = RawLogNoise.Default.ToList();
+
+    public ParseOptions ToParseOptions() => new(RawLogNoisePatterns);
 }
 
 public sealed class SettingsService

@@ -123,11 +123,44 @@ public sealed class QueryService(SqliteConnection conn)
             """, p).ToList();
     }
 
+    public List<NotificationRow> SearchNotifications(string term, string? kind, DateTime? from, DateTime? to)
+    {
+        var (clause, f, t) = DateFilter("n.event_time", from, to);
+        var kindClause = string.IsNullOrEmpty(kind) ? "" : " AND n.kind = @kind";
+        var termClause = string.IsNullOrWhiteSpace(term) ? ""
+            : " AND (n.sender_name LIKE @pattern ESCAPE '\\' OR n.message LIKE @pattern ESCAPE '\\' OR n.details LIKE @pattern ESCAPE '\\')";
+        return conn.Query<NotificationRow>($"""
+            SELECT n.id, n.notification_id AS NotificationId, n.event_time AS EventTime, n.kind AS Kind,
+                   n.sender_user_id AS SenderUserId, n.sender_name AS SenderName, n.message AS Message,
+                   n.details AS Details, n.accepted_at AS AcceptedAt
+            FROM notifications n
+            WHERE 1=1{termClause}{kindClause}{clause}
+            ORDER BY n.event_time DESC
+            LIMIT 2000
+            """, new { pattern = $"%{EscapeLike(term)}%", kind, from = f, to = t }).ToList();
+    }
+
+    public List<string> GetNotificationKinds() =>
+        conn.Query<string>("SELECT DISTINCT kind FROM notifications ORDER BY kind").ToList();
+
+    public List<ModerationRow> SearchModerationEvents(string term, DateTime? from, DateTime? to)
+    {
+        var (clause, f, t) = DateFilter("m.event_time", from, to);
+        var termClause = string.IsNullOrWhiteSpace(term) ? "" : " AND m.target_name LIKE @pattern ESCAPE '\\'";
+        return conn.Query<ModerationRow>($"""
+            SELECT m.visit_id AS VisitId, m.event_time AS EventTime, m.kind AS Kind, m.target_name AS TargetName,
+                   coalesce(v.world_name, '') AS WorldName
+            FROM moderation_events m LEFT JOIN visits v ON v.id = m.visit_id
+            WHERE 1=1{termClause}{clause}
+            ORDER BY m.event_time DESC
+            LIMIT 2000
+            """, new { pattern = $"%{EscapeLike(term)}%", from = f, to = t }).ToList();
+    }
+
     /// <summary>Wraps each whitespace-separated term in quotes so FTS treats them as literal phrases.</summary>
     private static string FtsQuery(string term) =>
         string.Join(" ", term.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Select(w => $"\"{w.Replace("\"", "\"\"")}\""));
 
-    private static string EscapeLike(string s) =>
-        s.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+    private static string EscapeLike(string s) => Db.EscapeLike(s);
 }

@@ -1,6 +1,7 @@
 <UserControl x:Class="VrcLogger.App.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="12" MaxWidth="700" HorizontalAlignment="Left">
         <TextBlock Text="ログフォルダ" FontWeight="Bold" Margin="0,0,0,4" />
         <ListBox ItemsSource="{Binding LogFolders}" SelectedItem="{Binding SelectedFolder}" Height="140" />
@@ -21,9 +22,28 @@
         <CheckBox Content="閉じるボタンでタスクトレイに常駐する (終了はトレイの右クリックから)"
                   IsChecked="{Binding MinimizeToTray}" Margin="0,8,0,0" />
 
+        <TextBlock Text="生ログの保持" FontWeight="Bold" Margin="0,16,0,4" />
+        <StackPanel Orientation="Horizontal">
+            <TextBox Text="{Binding RawLogRetentionDays, UpdateSourceTrigger=PropertyChanged}" Width="60" />
+            <TextBlock Text="日より古い生ログを削除 (0 で無制限)" VerticalAlignment="Center" Margin="6,0,0,0" />
+        </StackPanel>
+        <TextBlock Text="セッション・同席プレイヤー・URL・通知は削除されません。" Foreground="#777" FontSize="11" Margin="0,2,0,0" />
+
+        <TextBlock Text="生ログから除外する行 (1 行 1 パターン、前方一致。先頭に * を付けると部分一致)" Margin="0,10,0,4" />
+        <TextBox Text="{Binding RawLogNoisePatterns, UpdateSourceTrigger=PropertyChanged}"
+                 AcceptsReturn="True" Height="160" VerticalScrollBarVisibility="Auto"
+                 FontFamily="Consolas" FontSize="11" />
+        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+            <Button Content="既定に戻す" Padding="10,3" Command="{Binding ResetNoisePatternsCommand}" />
+            <Button Content="DB 最適化 (VACUUM)" Padding="10,3" Margin="6,0,0,0" Command="{Binding VacuumCommand}" />
+            <Button Content="全ログを再取り込み" Padding="10,3" Margin="6,0,0,0" Command="{Binding ReimportAllCommand}"
+                    ToolTip="取り込み済みのログファイルをすべて解析し直します (通知など新しく対応した項目を過去分にも反映)" />
+        </StackPanel>
+
         <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
             <Button Content="保存" Padding="16,4" Command="{Binding SaveCommand}" />
             <TextBlock Text="{Binding SaveStatus}" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="Green" />
         </StackPanel>
     </StackPanel>
+    </ScrollViewer>
 </UserControl>

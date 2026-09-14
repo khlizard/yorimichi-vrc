@@ -6,14 +6,18 @@ public static class LogParser
 {
     private static readonly TimeSpan UrlDedupeWindow = TimeSpan.FromSeconds(10);
 
-    public static ParseResult Parse(TextReader reader)
+    public static ParseResult Parse(TextReader reader, ParseOptions? options = null)
     {
+        options ??= ParseOptions.Default;
         string? localUserId = null;
         string? localUserName = null;
         var visits = new List<VisitBuilder>();
         var orphanUrls = new List<ParsedUrlEvent>();
         var orphanUrlLastSeen = new Dictionary<(string Kind, string Url), DateTime>();
         var rawEvents = new List<ParsedRawEvent>();
+        var notifications = new List<ParsedNotification>();
+        var answered = new List<(string, DateTime)>();
+        var moderation = new List<ParsedModerationEvent>();
         VisitBuilder? current = null;
         string? pendingWorldName = null;
         DateTime? lastTimestamp = null;
@@ -45,13 +49,54 @@ public static class LogParser
                 pendingWorldName = null;
             }
 
-            if (level != "Error")
-                rawEvents.Add(new ParsedRawEvent(ts, level, message, current is null ? null : visits.Count - 1));
+            var visitIndex = current is null ? (int?)null : visits.Count - 1;
+            if (level != "Error" && !RawLogNoise.IsNoise(message, options.RawNoisePatterns))
+                rawEvents.Add(new ParsedRawEvent(ts, level, message, visitIndex));
 
             if (joining.Success)
                 continue;
 
-            var m = LogLineRegex.PlayerJoined().Match(message);
+            var m = LogLineRegex.Notification().Match(message);
+            if (m.Success)
+            {
+                var notifKind = m.Groups[4].Value.Trim();
+                if (notifKind != "group") // group bulletins are bulk broadcasts, not personal communication
+                {
+                    var text = m.Groups[8].Value;
+                    if (text.EndsWith("\">", StringComparison.Ordinal))
+                        text = text[..^2];
+                    notifications.Add(new ParsedNotification(
+                        m.Groups[5].Value.Trim(), notifKind, m.Groups[2].Value, m.Groups[1].Value,
+                        text, m.Groups[7].Value, m.Groups[6].Value.Trim(), ts));
+                }
+                continue;
+            }
+
+            m = LogLineRegex.NotificationAnswered().Match(message);
+            if (m.Success)
+            {
+                answered.Add((m.Groups[1].Value.Trim(), ts));
+                continue;
+            }
+
+            m = LogLineRegex.Moderation().Match(message);
+            if (m.Success)
+            {
+                var word = m.Groups[3].Value.ToLowerInvariant();
+                var baseKind = word switch { "muted" => "mute", "blocked" => "block", "hidden" => "hide", _ => word };
+                var modKind = m.Groups[2].Value == "now" ? baseKind : "un" + baseKind;
+                moderation.Add(new ParsedModerationEvent(modKind, m.Groups[1].Value, ts, visitIndex));
+                continue;
+            }
+
+            m = LogLineRegex.VoteKick().Match(message);
+            if (m.Success)
+            {
+                moderation.Add(new ParsedModerationEvent("votekick", m.Groups[1].Value, ts, visitIndex));
+                continue;
+            }
+
+            m = LogLineRegex.PlayerJoined().Match(message);
             if (m.Success)
             {
                 current?.OpenEncounter(m.Groups[2].Value, m.Groups[1].Value, ts);
@@ -111,7 +156,7 @@ public static class LogParser
         return new ParseResult(
             localUserId, localUserName,
             visits.Select(v => v.Build()).ToList(),
-            orphanUrls, rawEvents, lastTimestamp);
+            orphanUrls, rawEvents, notifications, answered, moderation, lastTimestamp);
     }
 
     private sealed class VisitBuilder(string worldId, string worldName, string instanceId, string location, DateTime joinTime)

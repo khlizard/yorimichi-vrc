@@ -36,4 +36,20 @@ public static partial class LogLineRegex
 
     [GeneratedRegex(@"^\[Image Download\] Attempting to load image from URL '(.*)'$")]
     public static partial Regex ImageUrl();
+
+    // Received Notification: <Notification from username:NAME, sender user id:usr_… to usr_… of type: TYPE,
+    //   id: not_…, created at: MM/DD/YYYY HH:MM:SS UTC, details: {{k=v, …}}, type:TYPE, m seen:False, message: "TEXT">
+    // The message may span lines; the parser is line based so only the first line is captured.
+    [GeneratedRegex(@"^Received Notification: <Notification from username:(.*?), sender user id:(\S*) to (\S*) of type: ([^,]+), id: ([^,]+), created at: ([^,]*?)(?: UTC)?, details: \{\{(.*?)\}\}, type:[^,]*, m seen:\w+, message: ""(.*)$")]
+    public static partial Regex Notification();
+
+    [GeneratedRegex(@"^(?:Accept|Answer)Notification for notification:<Notification .*?, id: ([^,]+),")]
+    public static partial Regex NotificationAnswered();
+
+    // [ModerationManager] NAME is now Muted / is no longer Muted / is now Blocked …
+    [GeneratedRegex(@"^\[ModerationManager\] (.*) is (now|no longer) (\w+)$")]
+    public static partial Regex Moderation();
+
+    [GeneratedRegex(@"^\[ModerationManager\] A vote kick has been initiated against (.*), do you agree\?$")]
+    public static partial Regex VoteKick();
 }

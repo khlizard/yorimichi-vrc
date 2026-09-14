@@ -10,6 +10,7 @@ public static class Db
         {
             DataSource = dbPath,
             ForeignKeys = true,
+            DefaultTimeout = 30, // busy timeout (seconds): import/VACUUM on another connection may hold the lock
         }.ToString());
         conn.Open();
         using var cmd = conn.CreateCommand();
@@ -92,6 +93,31 @@ public static class Db
               INSERT INTO raw_events_fts(raw_events_fts, rowid, message) VALUES ('delete', old.id, old.message);
             END;
 
+            CREATE TABLE IF NOT EXISTS notifications (
+              id INTEGER PRIMARY KEY,
+              notification_id TEXT NOT NULL UNIQUE,
+              kind TEXT NOT NULL,
+              sender_user_id TEXT NOT NULL,
+              sender_name TEXT NOT NULL,
+              message TEXT NOT NULL,
+              details TEXT NOT NULL,
+              created_at_utc TEXT NOT NULL,
+              event_time TEXT NOT NULL,
+              accepted_at TEXT);
+
+            CREATE TABLE IF NOT EXISTS moderation_events (
+              id INTEGER PRIMARY KEY,
+              file_id INTEGER NOT NULL REFERENCES log_files(id) ON DELETE CASCADE,
+              visit_id INTEGER REFERENCES visits(id) ON DELETE CASCADE,
+              kind TEXT NOT NULL,
+              target_name TEXT NOT NULL,
+              event_time TEXT NOT NULL);
+
+            CREATE INDEX IF NOT EXISTS idx_notif_time     ON notifications(event_time);
+            CREATE INDEX IF NOT EXISTS idx_notif_sender   ON notifications(sender_user_id);
+            CREATE INDEX IF NOT EXISTS idx_mod_time       ON moderation_events(event_time);
+            CREATE INDEX IF NOT EXISTS idx_mod_file       ON moderation_events(file_id);
+            CREATE INDEX IF NOT EXISTS idx_mod_visit      ON moderation_events(visit_id);
             CREATE INDEX IF NOT EXISTS idx_visits_join     ON visits(join_time);
             CREATE INDEX IF NOT EXISTS idx_visits_file     ON visits(file_id);
             CREATE INDEX IF NOT EXISTS idx_enc_player_time ON encounters(player_id, join_time);
@@ -106,5 +132,23 @@ public static class Db
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>Rebuilds the database file so space freed by deletes is returned to the OS.</summary>
+    public static void Vacuum(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "VACUUM;";
+        cmd.ExecuteNonQuery();
+    }
+
+    public static long FileSizeBytes(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size();";
+        return (long)(cmd.ExecuteScalar() ?? 0L);
+    }
+
     public static string Ts(DateTime dt) => dt.ToString("yyyy-MM-dd HH:mm:ss");
+
+    public static string EscapeLike(string s) =>
+        s.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 }

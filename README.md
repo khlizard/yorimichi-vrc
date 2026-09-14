@@ -9,7 +9,8 @@ VRChat のログファイル (`output_log_*.txt`) を解析して SQLite に蓄�
 - **プレイヤー検索** — 表示名 / ユーザー ID で検索し、そのプレイヤーと同席したセッション一覧を表示。表示名の変更履歴も記録
 - **セッション一覧** — 訪問したワールド・インスタンスごとに、滞在時間と同席プレイヤーを表示
 - **URL 検索** — 動画再生 (`[Video Playback]`)・文字列ダウンロード・画像ダウンロードで読み込まれた URL を種別ごとに検索
-- **生ログ全文検索** — SQLite FTS5 によるログ行の全文検索 (ログレベルで絞り込み可)
+- **通知・モデレーション履歴** — 招待 / 招待リクエスト / フレンド申請 / boop などの通知と、ミュート・ブロック・Vote Kick の履歴 (グループ告知は保存しない)
+- **生ログ全文検索** — SQLite FTS5 によるログ行の全文検索 (ログレベルで絞り込み可)。定型ノイズ行は取り込み時に除外し、既定で 30 日より古い行は自動削除
 - **日付範囲フィルタ** — 全タブ共通で期間を絞り込み
 - **タスクトレイ常駐** — 閉じるボタンでトレイに格納して常駐 (設定で無効化可)
 - **多重起動防止** — 二重に起動した場合は既存のウィンドウを前面に表示して終了
@@ -46,7 +47,9 @@ VS Code を使う場合は `.vscode/tasks.json` の `build` / `watch` タスク�
     "%USERPROFILE%\AppData\LocalLow\VRChat\VRChat"
   ],
   "AutoImportIntervalMinutes": 5,
-  "MinimizeToTray": true
+  "MinimizeToTray": true,
+  "RawLogRetentionDays": 30,
+  "RawLogNoisePatterns": [ "[Behaviour] Using default gesture mask", "..." ]
 }
 ```
 
@@ -56,6 +59,8 @@ VS Code を使う場合は `.vscode/tasks.json` の `build` / `watch` タスク�
 | `LogFolders` | `output_log_*.txt` を探すフォルダ一覧。環境変数を展開可。複数フォルダに同名ファイルがある場合はサイズが大きい方を採用 |
 | `AutoImportIntervalMinutes` | 自動取り込みの間隔 (分)。`0` で無効 |
 | `MinimizeToTray` | `true` の場合、閉じるボタンでタスクトレイに常駐 |
+| `RawLogRetentionDays` | 生ログ (`raw_events`) の保持日数。これより古い行は取り込み後に削除。`0` で無制限。セッション・プレイヤー・URL・通知は削除されない |
+| `RawLogNoisePatterns` | 生ログに保存しない行のパターン (前方一致、先頭 `*` で部分一致)。既定はアバター読み込みなどの定型行。設定タブで編集可 |
 
 ## プロジェクト構成
 
@@ -83,6 +88,8 @@ VrcLogger.slnx
 | プレイヤー入退室 | `[Behaviour] OnPlayerJoined 名前 (usr_...)` / `OnPlayerLeft ...` |
 | 自分自身の認証 | `User Authenticated: 名前 (usr_...)` |
 | URL 読み込み | `[Video Playback] Resolving URL '...'`, `[String Download] ...`, `[Image Download] ...` |
+| 通知 | `Received Notification: <Notification from username:... of type: invite, ...>` / `AcceptNotification ...` |
+| モデレーション | `[ModerationManager] NAME is now Muted` / `is no longer Blocked` / `A vote kick has been initiated against ...` |
 
 ### データベース
 
@@ -93,9 +100,14 @@ VrcLogger.slnx
 - `visits` — ワールド訪問 (入室〜退室)
 - `encounters` — 訪問中に同席したプレイヤー
 - `url_events` — 読み込まれた URL
-- `raw_events` + `raw_events_fts` — 全ログ行と FTS5 全文検索インデックス
+- `notifications` — 通知 (通知 ID で重複排除。ログイン毎に再出力されるためファイルには紐付けない)
+- `moderation_events` — ミュート / ブロック / Vote Kick
+- `raw_events` + `raw_events_fts` — ログ行と FTS5 全文検索インデックス (ノイズ除外・保持期間あり)
 
 ファイルが追記された場合は、そのファイル由来の行を `ON DELETE CASCADE` で削除してから再解析します。
+取り込み後に期限切れ・ノイズ行を削除し、削除行数が多い場合は自動で `VACUUM` します (設定タブから手動実行も可)。
+
+パーサの対応項目が増えた場合 (例: 通知の追加) は、設定タブの「全ログを再取り込み」で既存ファイルを解析し直すと過去分にも反映されます。
 
 ## 使用ライブラリ
 

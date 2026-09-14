@@ -10,6 +10,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly Action _reopenDatabase;
     private readonly Action _restartAutoImport;
+    private readonly Func<Task> _vacuum;
+    private readonly Func<Task> _reimportAll;
 
     public ObservableCollection<string> LogFolders { get; }
 
@@ -26,13 +28,24 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _minimizeToTray;
 
     [ObservableProperty]
+    private int _rawLogRetentionDays;
+
+    /// <summary>1 行 1 パターン。</summary>
+    [ObservableProperty]
+    private string _rawLogNoisePatterns;
+
+    [ObservableProperty]
     private string _saveStatus = "";
 
-    public SettingsViewModel(SettingsService settings, Action reopenDatabase, Action restartAutoImport)
+    public SettingsViewModel(SettingsService settings, Action reopenDatabase, Action restartAutoImport, Func<Task> vacuum, Func<Task> reimportAll)
     {
+        _reimportAll = reimportAll;
         _settings = settings;
         _reopenDatabase = reopenDatabase;
         _restartAutoImport = restartAutoImport;
+        _vacuum = vacuum;
+        _rawLogRetentionDays = settings.Settings.RawLogRetentionDays;
+        _rawLogNoisePatterns = string.Join(Environment.NewLine, settings.Settings.RawLogNoisePatterns);
         LogFolders = new ObservableCollection<string>(settings.Settings.LogFolders);
         _dbPath = settings.Settings.DbPath;
         _autoImportIntervalMinutes = settings.Settings.AutoImportIntervalMinutes;
@@ -62,10 +75,24 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.Settings.DbPath = DbPath;
         _settings.Settings.AutoImportIntervalMinutes = Math.Max(0, AutoImportIntervalMinutes);
         _settings.Settings.MinimizeToTray = MinimizeToTray;
+        _settings.Settings.RawLogRetentionDays = Math.Max(0, RawLogRetentionDays);
+        _settings.Settings.RawLogNoisePatterns = RawLogNoisePatterns
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
         _settings.Save();
         if (dbChanged)
             _reopenDatabase();
         _restartAutoImport();
         SaveStatus = $"保存しました ({DateTime.Now:HH:mm:ss})";
     }
+
+    [RelayCommand]
+    private void ResetNoisePatterns() =>
+        RawLogNoisePatterns = string.Join(Environment.NewLine, VrcLogger.Core.Parsing.RawLogNoise.Default);
+
+    [RelayCommand]
+    private Task Vacuum() => _vacuum();
+
+    [RelayCommand]
+    private Task ReimportAll() => _reimportAll();
 }

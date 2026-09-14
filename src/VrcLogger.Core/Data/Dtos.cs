@@ -64,6 +64,29 @@ public sealed class RawEventHit
     public string WorldName { get; set; } = "";
 }
 
+public sealed class NotificationRow
+{
+    public long Id { get; set; }
+    public string NotificationId { get; set; } = "";
+    public string EventTime { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string SenderUserId { get; set; } = "";
+    public string SenderName { get; set; } = "";
+    public string Message { get; set; } = "";
+    public string Details { get; set; } = "";
+    public string? AcceptedAt { get; set; }
+    public string Response => AcceptedAt is null ? "" : "応答済";
+}
+
+public sealed class ModerationRow
+{
+    public long? VisitId { get; set; }
+    public string EventTime { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string TargetName { get; set; } = "";
+    public string WorldName { get; set; } = "";
+}
+
 public static class Dtos
 {
     public static string FormatDuration(string join, string leave)
