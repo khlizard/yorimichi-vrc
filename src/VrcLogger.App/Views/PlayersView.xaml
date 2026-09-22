@@ -56,8 +56,10 @@
                 <DataGridTextColumn Header="会った日時" Binding="{Binding JoinTime}" Width="150" />
                 <DataGridTextColumn Header="別れた日時" Binding="{Binding LeaveTime}" Width="150" />
                 <DataGridTextColumn Header="滞在" Binding="{Binding Duration}" Width="80" />
-                <DataGridTextColumn Header="名前(当時)" Binding="{Binding DisplayName}" Width="160" />
-                <DataGridTextColumn Header="ワールド" Binding="{Binding WorldName}" Width="220" />
+                <DataGridTextColumn Header="名前(当時)" Binding="{Binding DisplayName}" Width="140" />
+                <DataGridTextColumn Header="アバター" Binding="{Binding AvatarName}" Width="180" />
+                <DataGridTextColumn Header="MB" Binding="{Binding AvatarSizeMb, StringFormat={}{0:0.0}}" Width="55" />
+                <DataGridTextColumn Header="ワールド" Binding="{Binding WorldName}" Width="200" />
                 <DataGridTextColumn Header="インスタンス" Binding="{Binding InstanceId}" Width="*" />
             </DataGrid.Columns>
         </DataGrid>

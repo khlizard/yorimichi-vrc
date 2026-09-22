@@ -18,6 +18,8 @@ public static class LogParser
         var notifications = new List<ParsedNotification>();
         var answered = new List<(string, DateTime)>();
         var moderation = new List<ParsedModerationEvent>();
+        var avatars = new List<ParsedAvatarEvent>();
+        (double SizeMb, int LoadSeconds)? pendingDownload = null;
         VisitBuilder? current = null;
         string? pendingWorldName = null;
         DateTime? lastTimestamp = null;
@@ -96,6 +98,50 @@ public static class LogParser
                 continue;
             }
 
+            m = LogLineRegex.AvatarSwitch().Match(message);
+            if (m.Success)
+            {
+                var player = m.Groups[1].Value;
+                var avatar = m.Groups[2].Value;
+                // Joining a world logs one "Switching" per player present; re-logging the same
+                // avatar for the same player within a visit adds nothing.
+                var last = avatars.LastOrDefault(a => a.PlayerName == player);
+                if (last is null || last.VisitIndex != visitIndex || last.AvatarName != avatar)
+                    avatars.Add(new ParsedAvatarEvent(player, avatar, ts, visitIndex));
+                continue;
+            }
+
+            m = LogLineRegex.AvatarDownload().Match(message);
+            if (m.Success)
+            {
+                // The matching "Unpacking Avatar (X by NAME)" line follows right after this one.
+                pendingDownload = (
+                    double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture),
+                    int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture));
+                continue;
+            }
+
+            m = LogLineRegex.AvatarUnpack().Match(message);
+            if (m.Success)
+            {
+                if (pendingDownload is { } dl)
+                {
+                    var avatar = m.Groups[1].Value;
+                    var player = m.Groups[2].Value;
+                    var target = avatars.LastOrDefault(a => a.PlayerName == player && a.AvatarName == avatar)
+                              ?? avatars.LastOrDefault(a => a.PlayerName == player);
+                    if (target is null)
+                    {
+                        target = new ParsedAvatarEvent(player, avatar, ts, visitIndex);
+                        avatars.Add(target);
+                    }
+                    target.SizeMb = dl.SizeMb;
+                    target.LoadSeconds = dl.LoadSeconds;
+                    pendingDownload = null;
+                }
+                continue;
+            }
+
             m = LogLineRegex.PlayerJoined().Match(message);
             if (m.Success)
             {
@@ -156,7 +202,7 @@ public static class LogParser
         return new ParseResult(
             localUserId, localUserName,
             visits.Select(v => v.Build()).ToList(),
-            orphanUrls, rawEvents, notifications, answered, moderation, lastTimestamp);
+            orphanUrls, rawEvents, notifications, answered, moderation, avatars, lastTimestamp);
     }
 
     private sealed class VisitBuilder(string worldId, string worldName, string instanceId, string location, DateTime joinTime)

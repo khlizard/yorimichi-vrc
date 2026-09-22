@@ -30,7 +30,11 @@ public sealed class QueryService(SqliteConnection conn)
         return conn.Query<EncounterRow>($"""
             SELECT v.id AS VisitId, e.display_name AS DisplayName, v.world_name AS WorldName,
                    v.instance_id AS InstanceId, e.join_time AS JoinTime, e.leave_time AS LeaveTime,
-                   e.ended_cleanly AS EndedCleanly
+                   e.ended_cleanly AS EndedCleanly,
+                   (SELECT a.avatar_name FROM avatar_events a WHERE a.visit_id = v.id AND a.display_name = e.display_name
+                     ORDER BY a.event_time DESC, a.id DESC LIMIT 1) AS AvatarName,
+                   (SELECT a.size_mb FROM avatar_events a WHERE a.visit_id = v.id AND a.display_name = e.display_name AND a.size_mb IS NOT NULL
+                     ORDER BY a.event_time DESC, a.id DESC LIMIT 1) AS AvatarSizeMb
             FROM encounters e JOIN visits v ON v.id = e.visit_id
             WHERE e.player_id = @playerId{clause}
             ORDER BY e.join_time DESC
@@ -55,8 +59,12 @@ public sealed class QueryService(SqliteConnection conn)
     {
         return conn.Query<VisitPlayerRow>("""
             SELECT e.player_id AS PlayerId, e.display_name AS DisplayName, p.is_local AS IsLocal,
-                   e.join_time AS JoinTime, e.leave_time AS LeaveTime, e.ended_cleanly AS EndedCleanly
-            FROM encounters e JOIN players p ON p.id = e.player_id
+                   e.join_time AS JoinTime, e.leave_time AS LeaveTime, e.ended_cleanly AS EndedCleanly,
+                   (SELECT a.avatar_name FROM avatar_events a WHERE a.visit_id = v.id AND a.display_name = e.display_name
+                     ORDER BY a.event_time DESC, a.id DESC LIMIT 1) AS AvatarName,
+                   (SELECT a.size_mb FROM avatar_events a WHERE a.visit_id = v.id AND a.display_name = e.display_name AND a.size_mb IS NOT NULL
+                     ORDER BY a.event_time DESC, a.id DESC LIMIT 1) AS AvatarSizeMb
+            FROM encounters e JOIN players p ON p.id = e.player_id JOIN visits v ON v.id = e.visit_id
             WHERE e.visit_id = @visitId
             ORDER BY e.join_time
             """, new { visitId }).ToList();
@@ -121,6 +129,22 @@ public sealed class QueryService(SqliteConnection conn)
             ORDER BY r.event_time DESC
             LIMIT 2000
             """, p).ToList();
+    }
+
+    public List<AvatarRow> SearchAvatars(string term, DateTime? from, DateTime? to)
+    {
+        var (clause, f, t) = DateFilter("a.event_time", from, to);
+        var termClause = string.IsNullOrWhiteSpace(term) ? ""
+            : " AND (a.avatar_name LIKE @pattern ESCAPE '\\' OR a.display_name LIKE @pattern ESCAPE '\\')";
+        return conn.Query<AvatarRow>($"""
+            SELECT a.visit_id AS VisitId, a.event_time AS EventTime, a.display_name AS DisplayName,
+                   a.avatar_name AS AvatarName, a.size_mb AS SizeMb, a.load_seconds AS LoadSeconds,
+                   coalesce(v.world_name, '') AS WorldName
+            FROM avatar_events a LEFT JOIN visits v ON v.id = a.visit_id
+            WHERE 1=1{termClause}{clause}
+            ORDER BY a.event_time DESC
+            LIMIT 2000
+            """, new { pattern = $"%{EscapeLike(term)}%", from = f, to = t }).ToList();
     }
 
     public List<NotificationRow> SearchNotifications(string term, string? kind, DateTime? from, DateTime? to)

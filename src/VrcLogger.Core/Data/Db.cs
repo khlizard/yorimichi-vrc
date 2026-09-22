@@ -113,6 +113,21 @@ public static class Db
               target_name TEXT NOT NULL,
               event_time TEXT NOT NULL);
 
+            CREATE TABLE IF NOT EXISTS avatar_events (
+              id INTEGER PRIMARY KEY,
+              file_id INTEGER NOT NULL REFERENCES log_files(id) ON DELETE CASCADE,
+              visit_id INTEGER REFERENCES visits(id) ON DELETE CASCADE,
+              player_id INTEGER REFERENCES players(id),
+              display_name TEXT NOT NULL,
+              avatar_name TEXT NOT NULL,
+              size_mb REAL,
+              load_seconds INTEGER,
+              event_time TEXT NOT NULL);
+
+            CREATE INDEX IF NOT EXISTS idx_avatar_visit   ON avatar_events(visit_id, display_name, event_time);
+            CREATE INDEX IF NOT EXISTS idx_avatar_player  ON avatar_events(player_id, event_time);
+            CREATE INDEX IF NOT EXISTS idx_avatar_name    ON avatar_events(avatar_name);
+            CREATE INDEX IF NOT EXISTS idx_avatar_file    ON avatar_events(file_id);
             CREATE INDEX IF NOT EXISTS idx_notif_time     ON notifications(event_time);
             CREATE INDEX IF NOT EXISTS idx_notif_sender   ON notifications(sender_user_id);
             CREATE INDEX IF NOT EXISTS idx_mod_time       ON moderation_events(event_time);

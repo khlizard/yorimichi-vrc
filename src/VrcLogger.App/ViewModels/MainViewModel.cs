@@ -19,6 +19,7 @@ public sealed partial class MainViewModel : ObservableObject
     public SessionsViewModel Sessions { get; }
     public UrlsViewModel Urls { get; }
     public LogsViewModel Logs { get; }
+    public AvatarsViewModel Avatars { get; }
     public NotificationsViewModel Notifications { get; }
     public SettingsViewModel SettingsTab { get; }
 
@@ -44,12 +45,15 @@ public sealed partial class MainViewModel : ObservableObject
         _settings = settings;
         _queryConn = Db.Open(settings.ResolvedDbPath());
         Db.EnsureCreated(_queryConn);
+        // Cheap and idempotent: recovers avatar history from raw log lines kept in the DB.
+        new ImportService(_queryConn).BackfillAvatarEventsFromRawEvents();
         Query = new QueryService(_queryConn);
 
         Players = new PlayersViewModel(this);
         Sessions = new SessionsViewModel(this);
         Urls = new UrlsViewModel(this);
         Logs = new LogsViewModel(this);
+        Avatars = new AvatarsViewModel(this);
         Notifications = new NotificationsViewModel(this);
         SettingsTab = new SettingsViewModel(settings, ReopenDatabase, RestartAutoImportTimer, VacuumAsync, ReimportAllAsync);
 
@@ -125,6 +129,7 @@ public sealed partial class MainViewModel : ObservableObject
         Players.Refresh();
         Sessions.Refresh();
         Urls.Refresh();
+        Avatars.Refresh();
         Notifications.Refresh();
         Logs.Refresh();
     }
@@ -140,7 +145,9 @@ public sealed partial class MainViewModel : ObservableObject
         await Task.Run(() =>
         {
             using var conn = Db.Open(dbPath);
-            new ImportService(conn).MarkAllForReimport();
+            var svc = new ImportService(conn);
+            svc.BackfillAvatarEventsFromRawEvents();
+            svc.MarkAllForReimport();
         });
         await ImportAsync();
     }

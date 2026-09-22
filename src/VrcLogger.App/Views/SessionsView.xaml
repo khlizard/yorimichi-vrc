@@ -82,10 +82,12 @@
                     </Style>
                 </DataGrid.RowStyle>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="名前" Binding="{Binding DisplayName}" Width="220" />
-                    <DataGridTextColumn Header="Join" Binding="{Binding JoinTime}" Width="150" />
-                    <DataGridTextColumn Header="Leave" Binding="{Binding LeaveTime}" Width="150" />
-                    <DataGridTextColumn Header="滞在" Binding="{Binding Duration}" Width="*" />
+                    <DataGridTextColumn Header="名前" Binding="{Binding DisplayName}" Width="200" />
+                    <DataGridTextColumn Header="アバター" Binding="{Binding AvatarName}" Width="*" />
+                    <DataGridTextColumn Header="MB" Binding="{Binding AvatarSizeMb, StringFormat={}{0:0.0}}" Width="55" />
+                    <DataGridTextColumn Header="Join" Binding="{Binding JoinTime}" Width="140" />
+                    <DataGridTextColumn Header="Leave" Binding="{Binding LeaveTime}" Width="140" />
+                    <DataGridTextColumn Header="滞在" Binding="{Binding Duration}" Width="80" />
                 </DataGrid.Columns>
             </DataGrid>
 

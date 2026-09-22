@@ -52,4 +52,17 @@ public static partial class LogLineRegex
 
     [GeneratedRegex(@"^\[ModerationManager\] A vote kick has been initiated against (.*), do you agree\?$")]
     public static partial Regex VoteKick();
+
+    // [Behaviour] Switching NAME to avatar AVATAR
+    [GeneratedRegex(@"^\[Behaviour\] Switching (.*) to avatar (.*)$")]
+    public static partial Regex AvatarSwitch();
+
+    // [AssetBundleDownloadManager] Download for avatar (Worn:0 Dist:9.03) (44.2 MB) started 0 seconds and completed 3 seconds after queueing.
+    [GeneratedRegex(@"^\[AssetBundleDownloadManager\] Download for avatar \([^)]*\) \(([\d.]+) MB\) started (-?\d+) seconds and completed (-?\d+) seconds")]
+    public static partial Regex AvatarDownload();
+
+    // [AssetBundleDownloadManager] [114] Unpacking Avatar (AVATAR by NAME)
+    // Greedy first group: avatar names like "Dress by Shop" are common, so split at the LAST " by ".
+    [GeneratedRegex(@"^\[AssetBundleDownloadManager\] \[\d+\] Unpacking Avatar \((.*) by (.*)\)$")]
+    public static partial Regex AvatarUnpack();
 }

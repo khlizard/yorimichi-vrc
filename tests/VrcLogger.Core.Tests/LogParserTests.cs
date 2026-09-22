@@ -247,4 +247,44 @@ public class LogParserTests
         Assert.DoesNotContain(kept, m => m.StartsWith("[Udon]"));
         Assert.DoesNotContain(kept, m => m.Contains("trigger zone"));
     }
+
+    [Fact]
+    public void ParsesAvatarSwitchesAndDownloadSizes()
+    {
+        var result = Parse($$$"""
+            2026.06.23 21:38:23 {{{P}}}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+            2026.06.23 21:38:30 {{{P}}}[Behaviour] Switching Alice to avatar Dress by Shop
+            2026.06.23 21:38:30 {{{P}}}[Behaviour] Switching Bob to avatar Cached One
+            2026.06.23 21:38:30 {{{P}}}[AssetBundleDownloadManager] [109] Unpacking Avatar (Cached One by Bob)
+            2026.06.23 21:38:31 {{{P}}}[AssetBundleDownloadManager] Starting download of Avatar @ 44 MB, 0 still queued.
+            2026.06.23 21:38:34 {{{P}}}[AssetBundleDownloadManager] Download for avatar (Worn:0 Dist:9.03) (44.2 MB) started 0 seconds and completed 3 seconds after queueing.
+            2026.06.23 21:38:34 {{{P}}}[AssetBundleDownloadManager] [114] Unpacking Avatar (Dress by Shop by Alice)
+            2026.06.23 21:39:00 {{{P}}}[Behaviour] Switching Alice to avatar Dress by Shop
+            2026.06.23 21:40:00 {{{P}}}[AssetBundleDownloadManager] Download for avatar (Worn:0 Dist:2.00) (10.5 MB) started 0 seconds and completed 1 seconds after queueing.
+            2026.06.23 21:40:00 {{{P}}}[AssetBundleDownloadManager] [115] Unpacking Avatar (Surprise by Carol)
+            2026.06.23 21:41:00 {{{P}}}[Behaviour] Switching Alice to avatar Second Outfit
+            2026.06.23 22:00:00 {{{P}}}[Behaviour] OnLeftRoom
+            """);
+
+        var events = result.AvatarEvents;
+        Assert.Equal(4, events.Count);
+
+        var alice = events[0];
+        Assert.Equal(("Alice", "Dress by Shop"), (alice.PlayerName, alice.AvatarName)); // split at the last " by "
+        Assert.Equal(44.2, alice.SizeMb);
+        Assert.Equal(3, alice.LoadSeconds);
+        Assert.Equal(0, alice.VisitIndex);
+
+        var bob = events[1];
+        Assert.Equal("Cached One", bob.AvatarName);
+        Assert.Null(bob.SizeMb); // unpacked from cache: no download line, no size
+
+        // Unpack with a download but no preceding Switching still yields an event.
+        var carol = events[2];
+        Assert.Equal(("Carol", "Surprise", 10.5), (carol.PlayerName, carol.AvatarName, carol.SizeMb));
+
+        // Repeated "Switching" to the same avatar in the same visit is deduped; a new avatar is not.
+        Assert.Equal("Second Outfit", events[3].AvatarName);
+        Assert.Equal(new DateTime(2026, 6, 23, 21, 41, 0), events[3].Time);
+    }
 }

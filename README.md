@@ -9,6 +9,7 @@ VRChat のログファイル (`output_log_*.txt`) を解析して SQLite に蓄�
 - **プレイヤー検索** — 表示名 / ユーザー ID で検索し、そのプレイヤーと同席したセッション一覧を表示。表示名の変更履歴も記録
 - **セッション一覧** — 訪問したワールド・インスタンスごとに、滞在時間と同席プレイヤーを表示
 - **URL 検索** — 動画再生 (`[Video Playback]`)・文字列ダウンロード・画像ダウンロードで読み込まれた URL を種別ごとに検索
+- **アバター履歴** — 誰がどのアバターを着ていたか (アバター名) と、ダウンロード時のサイズ (MB)・所要秒数。セッション / プレイヤーの一覧にも表示
 - **通知・モデレーション履歴** — 招待 / 招待リクエスト / フレンド申請 / boop などの通知と、ミュート・ブロック・Vote Kick の履歴 (グループ告知は保存しない)
 - **生ログ全文検索** — SQLite FTS5 によるログ行の全文検索 (ログレベルで絞り込み可)。定型ノイズ行は取り込み時に除外し、既定で 30 日より古い行は自動削除
 - **日付範囲フィルタ** — 全タブ共通で期間を絞り込み
@@ -88,6 +89,7 @@ VrcLogger.slnx
 | プレイヤー入退室 | `[Behaviour] OnPlayerJoined 名前 (usr_...)` / `OnPlayerLeft ...` |
 | 自分自身の認証 | `User Authenticated: 名前 (usr_...)` |
 | URL 読み込み | `[Video Playback] Resolving URL '...'`, `[String Download] ...`, `[Image Download] ...` |
+| アバター | `[Behaviour] Switching NAME to avatar AVATAR` / `Download for avatar (…) (44.2 MB) …` + `Unpacking Avatar (AVATAR by NAME)` |
 | 通知 | `Received Notification: <Notification from username:... of type: invite, ...>` / `AcceptNotification ...` |
 | モデレーション | `[ModerationManager] NAME is now Muted` / `is no longer Blocked` / `A vote kick has been initiated against ...` |
 
@@ -100,6 +102,7 @@ VrcLogger.slnx
 - `visits` — ワールド訪問 (入室〜退室)
 - `encounters` — 訪問中に同席したプレイヤー
 - `url_events` — 読み込まれた URL
+- `avatar_events` — プレイヤーごとのアバター切替とダウンロードサイズ (サイズはダウンロード時のみ)
 - `notifications` — 通知 (通知 ID で重複排除。ログイン毎に再出力されるためファイルには紐付けない)
 - `moderation_events` — ミュート / ブロック / Vote Kick
 - `raw_events` + `raw_events_fts` — ログ行と FTS5 全文検索インデックス (ノイズ除外・保持期間あり)

@@ -225,4 +225,69 @@ public class ImportServiceTests : IDisposable
         // Retention 0 keeps everything; noise list still applies (nothing left to remove).
         Assert.Equal(0, svc.Prune(0, RawLogNoise.Default, now: new DateTime(2030, 1, 1)).Total);
     }
+
+    [Fact]
+    public void AvatarEventsAreLinkedToPlayersAndQueryable()
+    {
+        var svc = new ImportService(_conn);
+        var log = $$$"""
+            2026.06.23 21:38:23 {{{P}}}[Behaviour] Entering Room: Sample World
+            2026.06.23 21:38:23 {{{P}}}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+            2026.06.23 21:38:25 {{{P}}}[Behaviour] OnPlayerJoined Alice (usr_11111111-1111-1111-1111-111111111111)
+            2026.06.23 21:38:30 {{{P}}}[Behaviour] Switching Alice to avatar First
+            2026.06.23 21:38:34 {{{P}}}[AssetBundleDownloadManager] Download for avatar (Worn:0 Dist:9.03) (44.2 MB) started 0 seconds and completed 3 seconds after queueing.
+            2026.06.23 21:38:34 {{{P}}}[AssetBundleDownloadManager] [114] Unpacking Avatar (First by Alice)
+            2026.06.23 21:50:00 {{{P}}}[Behaviour] Switching Alice to avatar Second
+            2026.06.23 22:00:00 {{{P}}}[Behaviour] OnLeftRoom
+            """;
+        svc.ImportFile(WriteLog("output_log_2026-06-23_21-38-10.txt", log));
+
+        Assert.Equal(2, _conn.ExecuteScalar<long>("SELECT count(*) FROM avatar_events"));
+        Assert.Equal(2, _conn.ExecuteScalar<long>("SELECT count(*) FROM avatar_events WHERE player_id IS NOT NULL"));
+
+        var q = new QueryService(_conn);
+        var visit = Assert.Single(q.GetVisits(null, null, null));
+        var player = Assert.Single(q.GetVisitPlayers(visit.Id));
+        Assert.Equal("Second", player.AvatarName);   // latest avatar in the visit
+        Assert.Equal(44.2, player.AvatarSizeMb);     // last known size (from the earlier download)
+
+        var hit = Assert.Single(q.SearchPlayers("Alice"));
+        var enc = Assert.Single(q.GetEncounters(hit.Id, null, null));
+        Assert.Equal("Second", enc.AvatarName);
+
+        var rows = q.SearchAvatars("First", null, null);
+        var row = Assert.Single(rows);
+        Assert.Equal(("Alice", 44.2, 3, "Sample World"), (row.DisplayName, row.SizeMb, row.LoadSeconds, row.WorldName));
+        Assert.Equal(visit.Id, row.VisitId);
+        Assert.Equal(2, q.SearchAvatars("alice", null, null).Count); // player name matches too (LIKE is case-insensitive for ASCII)
+        Assert.Empty(q.SearchAvatars("First", new DateTime(2027, 1, 1), null));
+    }
+
+    [Fact]
+    public void BackfillRecoversAvatarSwitchesFromRawEvents()
+    {
+        var svc = new ImportService(_conn, new ParseOptions([])); // keep every line in raw_events
+        var log = $$$"""
+            2026.06.23 21:38:23 {{{P}}}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+            2026.06.23 21:38:25 {{{P}}}[Behaviour] OnPlayerJoined Alice (usr_11111111-1111-1111-1111-111111111111)
+            2026.06.23 21:38:30 {{{P}}}[Behaviour] Switching Alice to avatar Dress by Shop
+            2026.06.23 21:38:31 {{{P}}}[Behaviour] Switching Alice to avatar Dress by Shop
+            2026.06.23 21:50:00 {{{P}}}[Behaviour] Switching Alice to avatar Second
+            2026.06.23 22:00:00 {{{P}}}[Behaviour] OnLeftRoom
+            2026.06.23 22:01:00 {{{P}}}[Behaviour] Switching Nobody to avatar Lobby Look
+            """;
+        svc.ImportFile(WriteLog("output_log_2026-06-23_21-38-10.txt", log));
+        Assert.Equal(3, _conn.ExecuteScalar<long>("SELECT count(*) FROM avatar_events"));
+
+        // Simulate a database that predates avatar tracking.
+        _conn.Execute("DELETE FROM avatar_events");
+        Assert.Equal(3, svc.BackfillAvatarEventsFromRawEvents());
+        Assert.Equal(0, svc.BackfillAvatarEventsFromRawEvents()); // idempotent
+
+        var rows = _conn.Query<(string Name, string Avatar, long? VisitId, long? PlayerId)>(
+            "SELECT display_name, avatar_name, visit_id, player_id FROM avatar_events ORDER BY event_time").ToList();
+        Assert.Equal(["Dress by Shop", "Second", "Lobby Look"], rows.Select(r => r.Avatar).ToList());
+        Assert.All(rows.Take(2), r => { Assert.NotNull(r.VisitId); Assert.NotNull(r.PlayerId); });
+        Assert.Null(rows[2].VisitId);
+    }
 }

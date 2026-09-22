@@ -19,6 +19,8 @@ public sealed class EncounterRow
     public string JoinTime { get; set; } = "";
     public string LeaveTime { get; set; } = "";
     public bool EndedCleanly { get; set; }
+    public string? AvatarName { get; set; }
+    public double? AvatarSizeMb { get; set; }
     public string Duration => Dtos.FormatDuration(JoinTime, LeaveTime);
 }
 
@@ -43,7 +45,20 @@ public sealed class VisitPlayerRow
     public string JoinTime { get; set; } = "";
     public string LeaveTime { get; set; } = "";
     public bool EndedCleanly { get; set; }
+    public string? AvatarName { get; set; }
+    public double? AvatarSizeMb { get; set; }
     public string Duration => Dtos.FormatDuration(JoinTime, LeaveTime);
+}
+
+public sealed class AvatarRow
+{
+    public long? VisitId { get; set; }
+    public string EventTime { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string AvatarName { get; set; } = "";
+    public double? SizeMb { get; set; }
+    public int? LoadSeconds { get; set; }
+    public string WorldName { get; set; } = "";
 }
 
 public sealed class UrlHit

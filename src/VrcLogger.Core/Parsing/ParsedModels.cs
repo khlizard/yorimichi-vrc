@@ -45,6 +45,17 @@ public sealed record ParsedModerationEvent(
     DateTime Time,
     int? VisitIndex);
 
+/// <summary>A player (identified by display name only) wearing an avatar; size is known only when it was downloaded.</summary>
+public sealed class ParsedAvatarEvent(string playerName, string avatarName, DateTime time, int? visitIndex)
+{
+    public string PlayerName { get; } = playerName;
+    public string AvatarName { get; } = avatarName;
+    public DateTime Time { get; } = time;
+    public int? VisitIndex { get; } = visitIndex;
+    public double? SizeMb { get; set; }
+    public int? LoadSeconds { get; set; }
+}
+
 public sealed record ParseResult(
     string? LocalUserId,
     string? LocalUserName,
@@ -54,6 +65,7 @@ public sealed record ParseResult(
     List<ParsedNotification> Notifications,
     List<(string NotificationId, DateTime Time)> AnsweredNotifications,
     List<ParsedModerationEvent> ModerationEvents,
+    List<ParsedAvatarEvent> AvatarEvents,
     DateTime? LastTimestamp);
 
 /// <summary>Options controlling what the parser keeps.</summary>

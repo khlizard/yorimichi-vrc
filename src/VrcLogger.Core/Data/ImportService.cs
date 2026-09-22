@@ -81,6 +81,33 @@ public sealed class ImportService(SqliteConnection conn, ParseOptions? parseOpti
     /// </summary>
     public int MarkAllForReimport() => conn.Execute("UPDATE log_files SET last_size = 0");
 
+    /// <summary>
+    /// Recovers avatar switches from raw_events lines still in the database (the log files
+    /// themselves may already be gone). Sizes cannot be recovered: the download lines are
+    /// on the noise list. Idempotent; one row per (visit, player, avatar).
+    /// </summary>
+    public int BackfillAvatarEventsFromRawEvents()
+    {
+        const string prefix = "[Behaviour] Switching ";
+        return conn.Execute("""
+            INSERT INTO avatar_events (file_id, visit_id, player_id, display_name, avatar_name, event_time)
+            SELECT r.file_id, r.visit_id,
+                   (SELECT e.player_id FROM encounters e WHERE e.visit_id = r.visit_id AND e.display_name = s.name LIMIT 1),
+                   s.name, s.avatar, r.event_time
+            FROM raw_events r
+            JOIN (SELECT id,
+                         substr(message, @plen + 1, instr(message, ' to avatar ') - @plen - 1) AS name,
+                         substr(message, instr(message, ' to avatar ') + 11) AS avatar
+                  FROM raw_events
+                  WHERE message LIKE @like ESCAPE '\' AND instr(message, ' to avatar ') > @plen) s ON s.id = r.id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM avatar_events a
+                WHERE a.visit_id IS r.visit_id AND a.display_name = s.name AND a.avatar_name = s.avatar
+                  AND (r.visit_id IS NOT NULL OR a.file_id = r.file_id))
+            GROUP BY r.visit_id, s.name, s.avatar
+            """, new { plen = prefix.Length, like = Db.EscapeLike(prefix) + "% to avatar %" });
+    }
+
     /// <summary>Returns true if the file was (re)imported, false if unchanged.</summary>
     public bool ImportFile(string path, IProgress<string>? progress = null)
     {
@@ -111,8 +138,11 @@ public sealed class ImportService(SqliteConnection conn, ParseOptions? parseOpti
             new { name, size, now = Db.Ts(DateTime.Now) }, tx);
 
         var visitIds = new long[result.Visits.Count];
+        // display name -> player id, per visit, for linking avatar events (which only carry names).
+        var playersByName = new Dictionary<string, long>[result.Visits.Count];
         for (var i = 0; i < result.Visits.Count; i++)
         {
+            playersByName[i] = new Dictionary<string, long>(StringComparer.Ordinal);
             var v = result.Visits[i];
             long? worldRowId = v.WorldId is null ? null : conn.ExecuteScalar<long>("""
                 INSERT INTO worlds (world_id, name) VALUES (@WorldId, @WorldName)
@@ -136,6 +166,7 @@ public sealed class ImportService(SqliteConnection conn, ParseOptions? parseOpti
                 var playerId = UpsertPlayer(tx, enc.UserId, enc.DisplayName,
                     isLocal: enc.UserId == result.LocalUserId,
                     firstSeen: Db.Ts(enc.JoinTime), lastSeen: Db.Ts(enc.LeaveTime));
+                playersByName[i][enc.DisplayName] = playerId;
                 conn.Execute("""
                     INSERT INTO encounters (visit_id, player_id, display_name, join_time, leave_time, ended_cleanly)
                     VALUES (@visitId, @playerId, @DisplayName, @join, @leave, @clean)
@@ -182,6 +213,31 @@ public sealed class ImportService(SqliteConnection conn, ParseOptions? parseOpti
                     visitId = me.VisitIndex is { } mvi ? visitIds[mvi] : (long?)null,
                     me.Kind, me.TargetName, time = Db.Ts(me.Time),
                 }, tx);
+
+        foreach (var av in result.AvatarEvents)
+        {
+            long? playerId = null;
+            if (av.VisitIndex is { } avi && playersByName[avi].TryGetValue(av.PlayerName, out var pid))
+                playerId = pid;
+            else
+            {
+                // Outside a visit (or name not among encounters): fall back to a unique current display name.
+                var ids = conn.Query<long>("SELECT id FROM players WHERE display_name = @name LIMIT 2",
+                    new { name = av.PlayerName }, tx).ToList();
+                if (ids.Count == 1)
+                    playerId = ids[0];
+            }
+            conn.Execute("""
+                INSERT INTO avatar_events (file_id, visit_id, player_id, display_name, avatar_name, size_mb, load_seconds, event_time)
+                VALUES (@fileId, @visitId, @playerId, @PlayerName, @AvatarName, @SizeMb, @LoadSeconds, @time)
+                """,
+                new
+                {
+                    fileId,
+                    visitId = av.VisitIndex is { } vi2 ? visitIds[vi2] : (long?)null,
+                    playerId, av.PlayerName, av.AvatarName, av.SizeMb, av.LoadSeconds, time = Db.Ts(av.Time),
+                }, tx);
+        }
 
         foreach (var raw in result.RawEvents)
             conn.Execute("""
