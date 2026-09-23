@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:VrcLogger.App.Views"
         Title="{Binding WindowTitle, Mode=OneWay}" Height="750" Width="1200"
+        Icon="/Assets/icon.ico"
         WindowStartupLocation="CenterScreen">
     <DockPanel>
         <Border DockPanel.Dock="Top" Padding="8,6" BorderBrush="#DDD" BorderThickness="0,0,0,1">

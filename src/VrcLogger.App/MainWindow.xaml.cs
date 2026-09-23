@@ -39,12 +39,23 @@ public partial class MainWindow : Window
         });
         _tray = new System.Windows.Forms.NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = CreateTrayIcon(),
             Text = "VrcLogger",
             Visible = true,
             ContextMenuStrip = menu,
         };
         _tray.DoubleClick += (_, _) => ShowFromTray();
+    }
+
+    private static System.Drawing.Icon CreateTrayIcon()
+    {
+        var resource = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/icon.ico"));
+        if (resource is null)
+            return System.Drawing.SystemIcons.Application;
+
+        using var stream = resource.Stream;
+        var size = System.Windows.Forms.SystemInformation.SmallIconSize;
+        return new System.Drawing.Icon(stream, size.Width, size.Height);
     }
 
     public void ShowFromTray()
