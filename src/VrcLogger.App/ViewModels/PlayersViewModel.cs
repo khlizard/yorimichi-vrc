@@ -16,16 +16,51 @@ public sealed partial class PlayersViewModel(MainViewModel main) : ObservableObj
     [ObservableProperty]
     private PlayerHit? _selectedPlayer;
 
+    private const int PageSize = 100;
+    private string _activeTerm = "";
+
+    [ObservableProperty]
+    private bool _hasMore;
+
+    private bool _isLoading;
+
     [RelayCommand]
     public void Search()
     {
+        var previousId = SelectedPlayer?.Id;
+        _activeTerm = SearchTerm.Trim();
         Players.Clear();
         Encounters.Clear();
-        if (string.IsNullOrWhiteSpace(SearchTerm))
+        SelectedPlayer = null;
+        HasMore = false;
+        LoadPage();
+        SelectedPlayer = Players.FirstOrDefault(p => p.Id == previousId) ?? Players.FirstOrDefault();
+    }
+
+    [RelayCommand]
+    private void LoadMore()
+    {
+        if (!HasMore || _isLoading)
             return;
-        foreach (var p in main.Query.SearchPlayers(SearchTerm.Trim()))
-            Players.Add(p);
-        SelectedPlayer = Players.FirstOrDefault();
+        LoadPage();
+    }
+
+    private void LoadPage()
+    {
+        _isLoading = true;
+        try
+        {
+            var page = _activeTerm.Length == 0
+                ? main.Query.GetRecentPlayers(main.DateFrom, main.DateTo, Players.Count, PageSize)
+                : main.Query.SearchPlayers(_activeTerm, Players.Count, PageSize);
+            foreach (var p in page)
+                Players.Add(p);
+            HasMore = page.Count == PageSize;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 
     partial void OnSelectedPlayerChanged(PlayerHit? value) => LoadEncounters();
@@ -42,9 +77,5 @@ public sealed partial class PlayersViewModel(MainViewModel main) : ObservableObj
     [RelayCommand]
     private void OpenVisit(EncounterRow? row) => main.NavigateToVisit(row?.VisitId);
 
-    public void Refresh()
-    {
-        if (!string.IsNullOrWhiteSpace(SearchTerm))
-            LoadEncounters();
-    }
+    public void Refresh() => Search();
 }

@@ -17,7 +17,8 @@
         <DataGrid x:Name="ResultGrid" ItemsSource="{Binding Results}" AutoGenerateColumns="False"
                   IsReadOnly="True" SelectionMode="Single"
                   GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#EEE"
-                  MouseDoubleClick="ResultGrid_MouseDoubleClick">
+                  MouseDoubleClick="ResultGrid_MouseDoubleClick"
+                  ScrollViewer.ScrollChanged="List_ScrollChanged">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="時刻" Binding="{Binding EventTime}" Width="150" />
                 <DataGridTextColumn Header="Lv" Binding="{Binding Level}" Width="70" />

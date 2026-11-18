@@ -19,23 +19,51 @@ public sealed partial class LogsViewModel(MainViewModel main) : ObservableObject
 
     partial void OnSelectedLevelChanged(string value) => Search();
 
+    private const int PageSize = 200;
+    private string _activeTerm = "";
+    private string? _activeLevel;
+    private bool _isLoading;
+
+    [ObservableProperty]
+    private bool _hasMore;
+
     [RelayCommand]
     public void Search()
     {
+        _activeTerm = SearchTerm.Trim();
+        _activeLevel = SelectedLevel == "(全て)" ? null : SelectedLevel;
         Results.Clear();
-        if (string.IsNullOrWhiteSpace(SearchTerm))
-            return; // full-table dumps are not useful; require a term
-        var level = SelectedLevel == "(全て)" ? null : SelectedLevel;
-        foreach (var r in main.Query.SearchRawEvents(SearchTerm.Trim(), level, main.DateFrom, main.DateTo))
-            Results.Add(r);
+        HasMore = false;
+        LoadPage();
+    }
+
+    [RelayCommand]
+    private void LoadMore()
+    {
+        if (!HasMore || _isLoading)
+            return;
+        LoadPage();
+    }
+
+    private void LoadPage()
+    {
+        _isLoading = true;
+        try
+        {
+            (string Time, long Id)? before = Results.Count > 0 ? (Results[^1].EventTime, Results[^1].Id) : null;
+            var page = main.Query.SearchRawEvents(_activeTerm, _activeLevel, main.DateFrom, main.DateTo, before, PageSize);
+            foreach (var r in page)
+                Results.Add(r);
+            HasMore = page.Count == PageSize;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 
     [RelayCommand]
     private void OpenVisit(RawEventHit? row) => main.NavigateToVisit(row?.VisitId);
 
-    public void Refresh()
-    {
-        if (!string.IsNullOrWhiteSpace(SearchTerm))
-            Search();
-    }
+    public void Refresh() => Search();
 }

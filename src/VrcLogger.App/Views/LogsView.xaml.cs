@@ -14,4 +14,10 @@ public partial class LogsView : UserControl
         if (DataContext is LogsViewModel vm && ResultGrid.SelectedItem is RawEventHit row)
             vm.OpenVisitCommand.Execute(row);
     }
+
+    private void List_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (DataContext is LogsViewModel vm)
+            InfiniteScroll.OnScrollChanged(e, () => vm.HasMore, () => vm.LoadMoreCommand.Execute(null));
+    }
 }

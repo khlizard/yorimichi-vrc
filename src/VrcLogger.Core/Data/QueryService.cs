@@ -10,18 +10,35 @@ public sealed class QueryService(SqliteConnection conn)
          from is { } f ? Db.Ts(f.Date) : "0000",
          to is { } t ? Db.Ts(t.Date.AddDays(1)) : "9999");
 
-    public List<PlayerHit> SearchPlayers(string term)
+    public List<PlayerHit> GetRecentPlayers(DateTime? from, DateTime? to, int offset, int limit)
+    {
+        var (clause, f, t) = DateFilter("e.join_time", from, to);
+        return conn.Query<PlayerHit>($"""
+            SELECT p.id, p.user_id AS UserId, p.display_name AS DisplayName, p.is_local AS IsLocal,
+                   (SELECT group_concat(pn.display_name, ', ') FROM player_names pn
+                     WHERE pn.player_id = p.id AND pn.display_name <> p.display_name) AS OtherNames,
+                   count(*) AS EncounterCount, max(e.join_time) AS LastSeen
+            FROM encounters e JOIN players p ON p.id = e.player_id
+            WHERE p.is_local = 0{clause}
+            GROUP BY p.id
+            ORDER BY LastSeen DESC, p.id DESC
+            LIMIT @limit OFFSET @offset
+            """, new { from = f, to = t, limit, offset }).ToList();
+    }
+
+    public List<PlayerHit> SearchPlayers(string term, int offset = 0, int limit = 200)
     {
         return conn.Query<PlayerHit>("""
             SELECT p.id, p.user_id AS UserId, p.display_name AS DisplayName, p.is_local AS IsLocal,
                    (SELECT group_concat(pn.display_name, ', ') FROM player_names pn
                      WHERE pn.player_id = p.id AND pn.display_name <> p.display_name) AS OtherNames,
-                   (SELECT count(*) FROM encounters e WHERE e.player_id = p.id) AS EncounterCount
+                   (SELECT count(*) FROM encounters e WHERE e.player_id = p.id) AS EncounterCount,
+                   (SELECT max(e.join_time) FROM encounters e WHERE e.player_id = p.id) AS LastSeen
             FROM players p
             WHERE p.id IN (SELECT player_id FROM player_names WHERE display_name LIKE @pattern ESCAPE '\')
-            ORDER BY EncounterCount DESC
-            LIMIT 200
-            """, new { pattern = $"%{EscapeLike(term)}%" }).ToList();
+            ORDER BY EncounterCount DESC, p.id
+            LIMIT @limit OFFSET @offset
+            """, new { pattern = $"%{EscapeLike(term)}%", limit, offset }).ToList();
     }
 
     public List<EncounterRow> GetEncounters(long playerId, DateTime? from, DateTime? to)
@@ -93,25 +110,32 @@ public sealed class QueryService(SqliteConnection conn)
             """, new { pattern = $"%{EscapeLike(term)}%", kind, from = f, to = t }).ToList();
     }
 
-    public List<RawEventHit> SearchRawEvents(string term, string? level, DateTime? from, DateTime? to)
+    public List<RawEventHit> SearchRawEvents(string term, string? level, DateTime? from, DateTime? to,
+        (string Time, long Id)? before = null, int limit = 2000)
     {
         var (clause, f, t) = DateFilter("r.event_time", from, to);
         var levelClause = string.IsNullOrEmpty(level) ? "" : " AND r.level = @level";
-        var p = new { query = FtsQuery(term), pattern = $"%{EscapeLike(term)}%", level, from = f, to = t };
+        var beforeClause = before is null ? ""
+            : " AND (r.event_time < @bt OR (r.event_time = @bt AND r.id < @bid))";
+        var p = new
+        {
+            query = FtsQuery(term), pattern = $"%{EscapeLike(term)}%", level, from = f, to = t,
+            bt = before?.Time, bid = before?.Id ?? 0L, limit
+        };
 
         if (!string.IsNullOrWhiteSpace(term))
         {
             try
             {
                 return conn.Query<RawEventHit>($"""
-                    SELECT r.visit_id AS VisitId, r.event_time AS EventTime, r.level AS Level,
+                    SELECT r.id AS Id, r.visit_id AS VisitId, r.event_time AS EventTime, r.level AS Level,
                            r.message AS Message, coalesce(v.world_name, '') AS WorldName
                     FROM raw_events_fts fts
                     JOIN raw_events r ON r.id = fts.rowid
                     LEFT JOIN visits v ON v.id = r.visit_id
-                    WHERE raw_events_fts MATCH @query{levelClause}{clause}
-                    ORDER BY r.event_time DESC
-                    LIMIT 2000
+                    WHERE raw_events_fts MATCH @query{levelClause}{clause}{beforeClause}
+                    ORDER BY r.event_time DESC, r.id DESC
+                    LIMIT @limit
                     """, p).ToList();
             }
             catch (SqliteException)
@@ -122,12 +146,12 @@ public sealed class QueryService(SqliteConnection conn)
 
         var termClause = string.IsNullOrWhiteSpace(term) ? "" : " AND r.message LIKE @pattern ESCAPE '\\'";
         return conn.Query<RawEventHit>($"""
-            SELECT r.visit_id AS VisitId, r.event_time AS EventTime, r.level AS Level,
+            SELECT r.id AS Id, r.visit_id AS VisitId, r.event_time AS EventTime, r.level AS Level,
                    r.message AS Message, coalesce(v.world_name, '') AS WorldName
             FROM raw_events r LEFT JOIN visits v ON v.id = r.visit_id
-            WHERE 1=1{termClause}{levelClause}{clause}
-            ORDER BY r.event_time DESC
-            LIMIT 2000
+            WHERE 1=1{termClause}{levelClause}{clause}{beforeClause}
+            ORDER BY r.event_time DESC, r.id DESC
+            LIMIT @limit
             """, p).ToList();
     }
 

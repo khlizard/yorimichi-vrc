@@ -20,13 +20,15 @@
                 </TextBox>
             </DockPanel>
             <ListBox ItemsSource="{Binding Players}" SelectedItem="{Binding SelectedPlayer}"
-                     HorizontalContentAlignment="Stretch">
+                     HorizontalContentAlignment="Stretch"
+                     ScrollViewer.ScrollChanged="List_ScrollChanged">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Margin="2">
                             <TextBlock>
                                 <Run Text="{Binding DisplayName}" FontWeight="Bold" />
                                 <Run Text="{Binding EncounterCount, StringFormat=({0}回)}" Foreground="#777" />
+                                <Run Text="{Binding LastSeenDate, Mode=OneWay}" Foreground="#999" FontSize="11" />
                             </TextBlock>
                             <TextBlock Text="{Binding OtherNames, StringFormat=aka {0}}" Foreground="#999"
                                        FontSize="11" TextTrimming="CharacterEllipsis">

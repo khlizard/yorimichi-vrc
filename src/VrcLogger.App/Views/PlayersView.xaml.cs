@@ -14,4 +14,10 @@ public partial class PlayersView : UserControl
         if (DataContext is PlayersViewModel vm && EncounterGrid.SelectedItem is EncounterRow row)
             vm.OpenVisitCommand.Execute(row);
     }
+
+    private void List_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (DataContext is PlayersViewModel vm)
+            InfiniteScroll.OnScrollChanged(e, () => vm.HasMore, () => vm.LoadMoreCommand.Execute(null));
+    }
 }

@@ -8,6 +8,8 @@ public sealed class PlayerHit
     public bool IsLocal { get; set; }
     public string? OtherNames { get; set; }
     public int EncounterCount { get; set; }
+    public string? LastSeen { get; set; }
+    public string LastSeenDate => LastSeen is { Length: >= 10 } ls ? ls[..10] : "";
 }
 
 public sealed class EncounterRow
@@ -72,6 +74,7 @@ public sealed class UrlHit
 
 public sealed class RawEventHit
 {
+    public long Id { get; set; }
     public long? VisitId { get; set; }
     public string EventTime { get; set; } = "";
     public string Level { get; set; } = "";
