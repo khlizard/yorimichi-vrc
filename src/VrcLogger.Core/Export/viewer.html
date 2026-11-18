@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VrcLogger ビューア</title>
+<style>
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --text: #1d2129; --muted: #6b7280;
+  --border: #d9dde3; --hover: #eef2f8; --sel: #dbe7fb; --accent: #2563eb;
+  --head: #eceff4; --zebra: #f9fafb; --warn: #b45309;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a; --panel: #1c1f25; --text: #e5e7eb; --muted: #9aa3b0;
+    --border: #2f343c; --hover: #262b34; --sel: #243a63; --accent: #6ea0ff;
+    --head: #252a32; --zebra: #20242b; --warn: #e0a24a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: system-ui, "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+  font-size: 13px; color: var(--text); background: var(--bg);
+  display: flex; flex-direction: column;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+header {
+  position: sticky; top: 0; z-index: 10; background: var(--panel);
+  border-bottom: 1px solid var(--border); padding: 8px 12px;
+}
+.hrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+h1 { font-size: 16px; margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; }
+input[type=text], input[type=search], input[type=date], select {
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px;
+}
+button {
+  font: inherit; color: var(--text); background: var(--head);
+  border: 1px solid var(--border); border-radius: 4px; padding: 3px 10px; cursor: pointer;
+}
+button:hover { background: var(--hover); }
+.tabs { display: flex; gap: 4px; margin-left: auto; }
+.tab { border-radius: 4px; }
+.tab[aria-selected=true] { background: var(--accent); color: #fff; border-color: var(--accent); }
+main { flex: 1; min-height: 0; padding: 8px 12px; display: flex; }
+.view { flex: 1; min-height: 0; display: none; gap: 8px; }
+.view.active { display: grid; grid-template-columns: 340px 1fr; }
+.view.single.active { display: flex; flex-direction: column; }
+.pane {
+  min-width: 0; min-height: 0; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 4px;
+  display: flex; flex-direction: column;
+}
+.pane-top { padding: 6px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pane-top input[type=text], .pane-top input[type=search] { flex: 1; min-width: 120px; }
+.scroll { flex: 1; min-height: 0; overflow: auto; }
+.detail-head { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.detail-head .title { font-size: 15px; font-weight: 600; word-break: break-all; }
+.list-item {
+  padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.list-item:hover { background: var(--hover); }
+.list-item.sel { background: var(--sel); }
+.list-item .line { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
+.list-item b { word-break: break-all; }
+.warn { color: var(--warn); font-size: 11px; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { position: sticky; top: 0; background: var(--head); font-weight: 600; white-space: nowrap; z-index: 1; }
+td.nw { white-space: nowrap; }
+td.wrap { overflow-wrap: anywhere; min-width: 9em; }
+tbody tr:nth-child(even) { background: var(--zebra); }
+tbody tr:hover { background: var(--hover); }
+tr.click { cursor: pointer; }
+.empty { padding: 16px; color: var(--muted); }
+.more { display: block; margin: 8px auto; }
+.msg { margin: 40px auto; padding: 20px; max-width: 600px; text-align: center; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; }
+label.chk { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; }
+@media (max-width: 1100px) {
+  .view.active { grid-template-columns: 260px 1fr; }
+}
+@media (max-width: 800px) {
+  html, body { height: auto; }
+  header { position: sticky; }
+  main { display: block; }
+  .view.active { display: flex; flex-direction: column; }
+  .pane { max-height: 60vh; margin-bottom: 8px; }
+  .tabs { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <h1>VrcLogger ビューア</h1>
+    <span class="muted small" id="h-gen"></span>
+    <span class="muted small" id="h-range"></span>
+    <span class="muted small" id="h-counts"></span>
+    <div class="tabs" role="tablist" id="tabs"></div>
+  </div>
+  <div class="filters">
+    <span>期間:</span>
+    <label>開始日 <input type="date" id="f-start"></label>
+    <label>終了日 <input type="date" id="f-end"></label>
+    <button type="button" id="f-clear">クリア</button>
+  </div>
+</header>
+<main id="main"></main>
+<script>window.VRCLOG_DATA = /*__VRCLOG_DATA__*/null;</script>
+<script>
+(function () {
+'use strict';
+var PAGE = 500;
+var D = window.VRCLOG_DATA;
+
+function h(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = text;
+  return e;
+}
+function clear(e) { while (e.firstChild) e.removeChild(e.firstChild); }
+function $(id) { return document.getElementById(id); }
+
+var main = $('main');
+if (!D || typeof D !== 'object') {
+  var m = h('div', 'msg', 'データがありません (VrcLogger アプリから書き出したファイルを開いてください)');
+  main.appendChild(m);
+  $('tabs').style.display = 'none';
+  document.querySelector('.filters').style.display = 'none';
+  return;
+}
+
+var players = D.players || [], visits = D.visits || [], encs = D.enc || [], notifs = D.notif || [];
+
+// ---- indexes ----
+var playerById = new Map(), visitById = new Map();
+var encByPlayer = new Map(), encByVisit = new Map();
+var localId = null;
+players.forEach(function (p) {
+  playerById.set(p[0], p);
+  if (p[3] && localId === null) localId = p[0];
+});
+visits.forEach(function (v) { visitById.set(v[0], v); });
+encs.forEach(function (e) {
+  var a = encByPlayer.get(e[1]); if (!a) { a = []; encByPlayer.set(e[1], a); } a.push(e);
+  var b = encByVisit.get(e[0]); if (!b) { b = []; encByVisit.set(e[0], b); } b.push(e);
+});
+var visitCount = new Map();
+encByVisit.forEach(function (arr, vid) {
+  var s = new Set(); arr.forEach(function (e) { s.add(e[1]); });
+  visitCount.set(vid, s.size);
+});
+var lowerCache = new Map();
+players.forEach(function (p) {
+  lowerCache.set(p[0], ((p[2] || '') + '\n' + (p[4] || '') + '\n' + (p[1] || '')).toLowerCase());
+});
+var kinds = Array.from(new Set(notifs.map(function (n) { return n[1]; }))).sort();
+var KIND_JA = { invite: '招待', requestInvite: '招待リクエスト', friendRequest: 'フレンド申請', boop: 'boop',
+  message: 'メッセージ', inviteResponse: '招待への返信', requestInviteResponse: 'リクエストへの返信' };
+
+// ---- utils ----
+function parseT(s) {
+  if (!s) return NaN;
+  var d = new Date(String(s).replace(' ', 'T'));
+  return d.getTime();
+}
+function dur(j, l) {
+  var a = parseT(j), b = parseT(l);
+  if (isNaN(a) || isNaN(b) || b < a) return '';
+  var sec = Math.floor((b - a) / 1000);
+  var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+  if (sec >= 3600) return Math.floor(sec / 3600) + 'h ' + pad(Math.floor(sec % 3600 / 60)) + 'm';
+  return Math.floor(sec / 60) + 'm ' + pad(sec % 60) + 's';
+}
+function inRange(t) {
+  if (!t) return !(range.start || range.end);
+  var d = String(t).slice(0, 10);
+  if (range.start && d < range.start) return false;
+  if (range.end && d > range.end) return false;
+  return true;
+}
+function dateOf(t) { return t ? String(t).slice(0, 10) : ''; }
+
+// ---- state ----
+var range = { start: '', end: '' };
+var st = { tab: 'players', player: null, visit: null,
+  pq: '', vq: '', nq: '', nkind: '',
+  lim: { p: PAGE, v: PAGE, n: PAGE, pe: PAGE } };
+
+// ---- header ----
+(function () {
+  $('h-gen').textContent = '書き出し: ' + (D.generatedAt || '-');
+  var mn = '', mx = '';
+  visits.forEach(function (v) { var d = dateOf(v[3]); if (!d) return; if (!mn || d < mn) mn = d; if (!mx || d > mx) mx = d; });
+  $('h-range').textContent = 'データ範囲: ' + (mn ? mn + ' 〜 ' + mx : '-');
+  $('h-counts').textContent = 'プレイヤー ' + players.length + ' / セッション ' + visits.length + ' / 通知 ' + notifs.length;
+})();
+
+var TABS = [['players', 'プレイヤー'], ['sessions', 'セッション'], ['notifs', '通知']];
+var tabBtns = {};
+TABS.forEach(function (t) {
+  var b = h('button', 'tab', t[1]); b.type = 'button'; b.setAttribute('role', 'tab');
+  b.addEventListener('click', function () { go({ tab: t[0] }); });
+  $('tabs').appendChild(b); tabBtns[t[0]] = b;
+});
+
+// ---- hash ----
+function hashStr(o) {
+  var s = 'tab=' + o.tab;
+  if (o.tab === 'players' && o.player != null) s += '&player=' + o.player;
+  if (o.tab === 'sessions' && o.visit != null) s += '&visit=' + o.visit;
+  return s;
+}
+function go(o) {
+  var n = { tab: o.tab || st.tab, player: st.player, visit: st.visit };
+  if ('player' in o) n.player = o.player;
+  if ('visit' in o) n.visit = o.visit;
+  var s = '#' + hashStr(n);
+  if (location.hash === s) { applyHash(); } else { location.hash = s; }
+}
+function applyHash() {
+  var q = {};
+  location.hash.replace(/^#/, '').split('&').forEach(function (kv) {
+    var i = kv.indexOf('='); if (i > 0) q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1));
+  });
+  st.tab = (q.tab === 'sessions' || q.tab === 'notifs') ? q.tab : 'players';
+  if (q.player !== undefined && /^-?\d+$/.test(q.player)) st.player = parseInt(q.player, 10);
+  if (q.visit !== undefined && /^-?\d+$/.test(q.visit)) st.visit = parseInt(q.visit, 10);
+  render();
+}
+window.addEventListener('hashchange', applyHash);
+
+// ---- views ----
+function mkView(id, single) {
+  var v = h('div', 'view' + (single ? ' single' : '')); v.id = id; main.appendChild(v); return v;
+}
+function mkPane(parent) { var p = h('div', 'pane'); parent.appendChild(p); return p; }
+
+var vP = mkView('v-players'), vS = mkView('v-sessions'), vN = mkView('v-notifs', true);
+
+// players
+var pPaneL = mkPane(vP), pPaneR = mkPane(vP);
+var pSearch = h('input'); pSearch.type = 'search'; pSearch.placeholder = '名前 / 旧名 / userId で検索';
+var pTop = h('div', 'pane-top'); pTop.appendChild(pSearch); pPaneL.appendChild(pTop);
+var pList = h('div', 'scroll'); pPaneL.appendChild(pList);
+var pDetail = h('div', 'scroll'); pPaneR.appendChild(pDetail);
+
+// sessions
+var sPaneL = mkPane(vS), sPaneR = mkPane(vS);
+var sSearch = h('input'); sSearch.type = 'search'; sSearch.placeholder = 'ワールド名で絞り込み';
+var sTop = h('div', 'pane-top'); sTop.appendChild(sSearch); sPaneL.appendChild(sTop);
+var sList = h('div', 'scroll'); sPaneL.appendChild(sList);
+var sDetail = h('div', 'scroll'); sPaneR.appendChild(sDetail);
+var hideSelf = false;
+
+// notifs
+var nPane = mkPane(vN); nPane.style.flex = '1';
+var nKind = h('select');
+(function () {
+  var o = h('option', null, '(全て)'); o.value = ''; nKind.appendChild(o);
+  kinds.forEach(function (k) {
+    var op = h('option', null, kindLabel(k)); op.value = k; nKind.appendChild(op);
+  });
+})();
+var nSearch = h('input'); nSearch.type = 'search'; nSearch.placeholder = '送信者 / 本文 / 詳細 で検索';
+var nTop = h('div', 'pane-top'); nTop.appendChild(nKind); nTop.appendChild(nSearch); nPane.appendChild(nTop);
+var nBody = h('div', 'scroll'); nPane.appendChild(nBody);
+
+function kindLabel(k) { return KIND_JA[k] && KIND_JA[k] !== k ? k + ' (' + KIND_JA[k] + ')' : String(k); }
+
+// ---- inputs ----
+function debounce(fn, ms) { var t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }
+function resetLim() { st.lim = { p: PAGE, v: PAGE, n: PAGE, pe: PAGE }; }
+pSearch.addEventListener('input', debounce(function () { st.pq = pSearch.value; st.lim.p = PAGE; renderPlayers(); }, 200));
+sSearch.addEventListener('input', debounce(function () { st.vq = sSearch.value; st.lim.v = PAGE; renderSessions(); }, 200));
+nSearch.addEventListener('input', debounce(function () { st.nq = nSearch.value; st.lim.n = PAGE; renderNotifs(); }, 200));
+nKind.addEventListener('change', function () { st.nkind = nKind.value; st.lim.n = PAGE; renderNotifs(); });
+function onRange() {
+  range.start = $('f-start').value; range.end = $('f-end').value;
+  resetLim(); render();
+}
+$('f-start').addEventListener('change', onRange);
+$('f-end').addEventListener('change', onRange);
+$('f-clear').addEventListener('click', function () { $('f-start').value = ''; $('f-end').value = ''; onRange(); });
+
+// ---- helpers for rendering ----
+function moreBtn(parent, remaining, onclick) {
+  if (remaining <= 0) return;
+  var b = h('button', 'more', 'さらに表示 (残り ' + remaining + ' 件)'); b.type = 'button';
+  b.addEventListener('click', onclick); parent.appendChild(b);
+}
+function mkTable(cols) {
+  var t = h('table'), th = h('thead'), tr = h('tr');
+  cols.forEach(function (c) { tr.appendChild(h('th', null, c)); });
+  th.appendChild(tr); t.appendChild(th);
+  var tb = h('tbody'); t.appendChild(tb);
+  return { table: t, body: tb };
+}
+function td(tr, text, cls) { var c = h('td', cls || '', text); tr.appendChild(c); return c; }
+function emptyMsg(parent, text) { parent.appendChild(h('div', 'empty', text || '該当なし')); }
+function keep(scrollEl, fn) { var top = scrollEl.scrollTop; fn(); scrollEl.scrollTop = top; }
+function activate(el, fn) {
+  el.tabIndex = 0;
+  el.addEventListener('click', fn);
+  el.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); fn(); } });
+}
+
+// ---- players ----
+function playerStats(pid) {
+  var arr = encByPlayer.get(pid) || [], c = 0, last = '';
+  for (var i = 0; i < arr.length; i++) {
+    if (!inRange(arr[i][3])) continue;
+    c++; if (arr[i][3] > last) last = arr[i][3];
+  }
+  return { count: c, last: last };
+}
+function renderPlayers() {
+  var q = st.pq.trim().toLowerCase();
+  var rows = [];
+  var ranged = !!(range.start || range.end);
+  players.forEach(function (p) {
+    if (q && lowerCache.get(p[0]).indexOf(q) < 0) return;
+    var s = playerStats(p[0]);
+    if (!q && s.count === 0) return;
+    if (q && ranged && s.count === 0) return;
+    rows.push({ p: p, count: s.count, last: s.last });
+  });
+  rows.sort(function (a, b) { return b.count - a.count || (a.last < b.last ? 1 : a.last > b.last ? -1 : 0); });
+  if (!q) rows = rows.slice(0, 50);
+  keep(pList, function () {
+    clear(pList);
+    if (!rows.length) { emptyMsg(pList); return; }
+    rows.slice(0, st.lim.p).forEach(function (r) {
+      var it = h('div', 'list-item' + (r.p[0] === st.player ? ' sel' : ''));
+      var l1 = h('div', 'line');
+      l1.appendChild(h('b', null, r.p[2] || '(名前なし)'));
+      if (r.p[3]) l1.appendChild(h('span', 'muted', '(自分)'));
+      l1.appendChild(h('span', null, '(' + r.count + '回)'));
+      if (r.last) l1.appendChild(h('span', 'muted small', dateOf(r.last)));
+      it.appendChild(l1);
+      if (r.p[4]) it.appendChild(h('div', 'muted small', 'aka ' + r.p[4]));
+      activate(it, function () { go({ tab: 'players', player: r.p[0] }); });
+      pList.appendChild(it);
+    });
+    moreBtn(pList, rows.length - st.lim.p, function () { st.lim.p += PAGE; renderPlayers(); });
+  });
+  renderPlayerDetail();
+}
+function renderPlayerDetail() {
+  var top = pDetail.scrollTop;
+  clear(pDetail);
+  var p = st.player !== null ? playerById.get(st.player) : null;
+  if (!p) { emptyMsg(pDetail, st.player !== null ? '該当なし' : '左の一覧からプレイヤーを選択してください'); return; }
+  var hd = h('div', 'detail-head');
+  hd.appendChild(h('div', 'title', (p[2] || '(名前なし)') + (p[3] ? ' (自分)' : '')));
+  hd.appendChild(h('div', 'muted small', p[1] || ''));
+  if (p[4]) hd.appendChild(h('div', 'muted small', 'aka ' + p[4]));
+  pDetail.appendChild(hd);
+  var list = (encByPlayer.get(p[0]) || []).filter(function (e) { return inRange(e[3]); });
+  list.sort(function (a, b) { return a[3] < b[3] ? 1 : a[3] > b[3] ? -1 : 0; });
+  if (!list.length) { emptyMsg(pDetail); return; }
+  var t = mkTable(['会った日時', '別れた日時', '滞在', 'ワールド', '当時の名前']);
+  list.slice(0, st.lim.pe).forEach(function (e) {
+    var v = visitById.get(e[0]);
+    var tr = h('tr', 'click');
+    td(tr, e[3] || '', 'nw'); td(tr, e[4] || '', 'nw'); td(tr, dur(e[3], e[4]), 'nw');
+    td(tr, v ? v[1] : '', 'wrap'); td(tr, e[2] || '', 'wrap');
+    activate(tr, function () { go({ tab: 'sessions', visit: e[0] }); });
+    t.body.appendChild(tr);
+  });
+  pDetail.appendChild(t.table);
+  moreBtn(pDetail, list.length - st.lim.pe, function () { st.lim.pe += PAGE; renderPlayerDetail(); });
+  pDetail.scrollTop = top;
+}
+
+// ---- sessions ----
+function renderSessions() {
+  var q = st.vq.trim().toLowerCase();
+  var rows = visits.filter(function (v) {
+    return inRange(v[3]) && (!q || String(v[1] || '').toLowerCase().indexOf(q) >= 0);
+  });
+  rows.sort(function (a, b) { return a[3] < b[3] ? 1 : a[3] > b[3] ? -1 : 0; });
+  keep(sList, function () {
+    clear(sList);
+    if (!rows.length) { emptyMsg(sList); return; }
+    rows.slice(0, st.lim.v).forEach(function (v) {
+      var it = h('div', 'list-item' + (v[0] === st.visit ? ' sel' : ''));
+      it.appendChild(h('div', 'muted small', v[3] || ''));
+      var l = h('div', 'line');
+      l.appendChild(h('b', null, v[1] || '(不明)'));
+      l.appendChild(h('span', null, '(' + (visitCount.get(v[0]) || 0) + '人)'));
+      var d = dur(v[3], v[4]); if (d) l.appendChild(h('span', 'muted small', d));
+      if (!v[5]) l.appendChild(h('span', 'warn muted', '※途中終了'));
+      it.appendChild(l);
+      activate(it, function () { go({ tab: 'sessions', visit: v[0] }); });
+      sList.appendChild(it);
+    });
+    moreBtn(sList, rows.length - st.lim.v, function () { st.lim.v += PAGE; renderSessions(); });
+  });
+  renderVisitDetail();
+}
+function renderVisitDetail() {
+  var top = sDetail.scrollTop;
+  clear(sDetail);
+  var v = st.visit !== null ? visitById.get(st.visit) : null;
+  if (!v) { emptyMsg(sDetail, st.visit !== null ? '該当なし' : '左の一覧からセッションを選択してください'); return; }
+  var hd = h('div', 'detail-head');
+  hd.appendChild(h('div', 'title', v[1] || '(不明)'));
+  hd.appendChild(h('div', 'muted small', v[2] || ''));
+  var d = dur(v[3], v[4]);
+  hd.appendChild(h('div', 'small', (v[3] || '') + ' 〜 ' + (v[4] || '') + (d ? '  (' + d + ')' : '') + (v[5] ? '' : '  ※途中終了')));
+  var lab = h('label', 'chk'); var cb = h('input'); cb.type = 'checkbox'; cb.checked = hideSelf;
+  cb.addEventListener('change', function () { hideSelf = cb.checked; renderVisitDetail(); });
+  lab.appendChild(cb); lab.appendChild(document.createTextNode('自分を隠す'));
+  hd.appendChild(lab);
+  sDetail.appendChild(hd);
+  var list = (encByVisit.get(v[0]) || []).filter(function (e) { return !(hideSelf && e[1] === localId); });
+  list.sort(function (a, b) { return a[3] < b[3] ? -1 : a[3] > b[3] ? 1 : 0; });
+  if (!list.length) { emptyMsg(sDetail); return; }
+  var t = mkTable(['名前', 'Join', 'Leave', '滞在']);
+  list.forEach(function (e) {
+    var tr = h('tr', 'click');
+    td(tr, (e[2] || '') + (e[1] === localId ? ' (自分)' : ''), 'wrap');
+    td(tr, e[3] || '', 'nw'); td(tr, e[4] || '', 'nw'); td(tr, dur(e[3], e[4]), 'nw');
+    activate(tr, function () { go({ tab: 'players', player: e[1] }); });
+    t.body.appendChild(tr);
+  });
+  sDetail.appendChild(t.table);
+  sDetail.scrollTop = top;
+}
+
+// ---- notifications ----
+function renderNotifs() {
+  var q = st.nq.trim().toLowerCase();
+  var rows = notifs.filter(function (n) {
+    if (!inRange(n[0])) return false;
+    if (st.nkind && n[1] !== st.nkind) return false;
+    if (q && (String(n[2] || '') + '\n' + (n[3] || '') + '\n' + (n[4] || '')).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  rows.sort(function (a, b) { return a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0; });
+  keep(nBody, function () {
+    clear(nBody);
+    if (!rows.length) { emptyMsg(nBody); return; }
+    var t = mkTable(['時刻', '種別', '送信者', '本文', '詳細', '応答']);
+    rows.slice(0, st.lim.n).forEach(function (n) {
+      var tr = h('tr');
+      td(tr, n[0] || '', 'nw'); td(tr, kindLabel(n[1]), 'nw'); td(tr, n[2] || '', 'wrap');
+      td(tr, n[3] || '', 'wrap'); td(tr, n[4] || '', 'wrap muted small');
+      td(tr, n[5] != null ? '応答済' : '', 'nw');
+      t.body.appendChild(tr);
+    });
+    nBody.appendChild(t.table);
+    moreBtn(nBody, rows.length - st.lim.n, function () { st.lim.n += PAGE; renderNotifs(); });
+  });
+}
+
+// ---- main render ----
+function render() {
+  TABS.forEach(function (t) { tabBtns[t[0]].setAttribute('aria-selected', t[0] === st.tab ? 'true' : 'false'); });
+  vP.classList.toggle('active', st.tab === 'players');
+  vS.classList.toggle('active', st.tab === 'sessions');
+  vN.classList.toggle('active', st.tab === 'notifs');
+  if (st.tab === 'players') renderPlayers();
+  else if (st.tab === 'sessions') renderSessions();
+  else renderNotifs();
+}
+
+applyHash();
+})();
+</script>
+</body>
+</html>

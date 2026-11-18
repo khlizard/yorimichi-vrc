@@ -21,6 +21,9 @@ public sealed class AppSettings
     /// <summary>生ログから除外する行 (前方一致。先頭 '*' で部分一致)。</summary>
     public List<string> RawLogNoisePatterns { get; set; } = RawLogNoise.Default.ToList();
 
+    /// <summary>別PC閲覧用 HTML の書き出し先。空文字で書き出さない。</summary>
+    public string ViewerExportPath { get; set; } = "vrclog-viewer.html";
+
     public ParseOptions ToParseOptions() => new(RawLogNoisePatterns);
 }
 
@@ -75,6 +78,15 @@ public sealed class SettingsService
     public string ResolvedDbPath()
     {
         var p = Environment.ExpandEnvironmentVariables(Settings.DbPath);
+        return Path.IsPathRooted(p) ? p : Path.Combine(BaseDir, p);
+    }
+
+    /// <summary>Absolute path of the viewer HTML, or null when export is disabled.</summary>
+    public string? ResolvedViewerExportPath()
+    {
+        if (string.IsNullOrWhiteSpace(Settings.ViewerExportPath))
+            return null;
+        var p = Environment.ExpandEnvironmentVariables(Settings.ViewerExportPath.Trim());
         return Path.IsPathRooted(p) ? p : Path.Combine(BaseDir, p);
     }
 

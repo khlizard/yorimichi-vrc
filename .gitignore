@@ -11,3 +11,7 @@ logs/
 
 # ローカル設定
 vrclogger.settings.json
+
+# 別PC閲覧用 HTML（他プレイヤーの名前・ID を含む）
+vrclog-viewer.html
+*.html.tmp

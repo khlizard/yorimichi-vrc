@@ -12,6 +12,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Action _restartAutoImport;
     private readonly Func<Task> _vacuum;
     private readonly Func<Task> _reimportAll;
+    private readonly Func<Task> _exportViewer;
+
+    [ObservableProperty]
+    private string _viewerExportPath;
 
     public ObservableCollection<string> LogFolders { get; }
 
@@ -37,9 +41,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _saveStatus = "";
 
-    public SettingsViewModel(SettingsService settings, Action reopenDatabase, Action restartAutoImport, Func<Task> vacuum, Func<Task> reimportAll)
+    public SettingsViewModel(SettingsService settings, Action reopenDatabase, Action restartAutoImport, Func<Task> vacuum, Func<Task> reimportAll, Func<Task> exportViewer)
     {
         _reimportAll = reimportAll;
+        _exportViewer = exportViewer;
+        _viewerExportPath = settings.Settings.ViewerExportPath;
         _settings = settings;
         _reopenDatabase = reopenDatabase;
         _restartAutoImport = restartAutoImport;
@@ -79,6 +85,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.Settings.RawLogNoisePatterns = RawLogNoisePatterns
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
+        _settings.Settings.ViewerExportPath = (ViewerExportPath ?? "").Trim();
         _settings.Save();
         if (dbChanged)
             _reopenDatabase();
@@ -95,4 +102,13 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [RelayCommand]
     private Task ReimportAll() => _reimportAll();
+
+    /// <summary>未保存の書き出し先も反映してから書き出す。</summary>
+    [RelayCommand]
+    private Task ExportViewer()
+    {
+        _settings.Settings.ViewerExportPath = (ViewerExportPath ?? "").Trim();
+        _settings.Save();
+        return _exportViewer();
+    }
 }

@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Data.Sqlite;
 using VrcLogger.Core.Data;
+using VrcLogger.Core.Export;
 using VrcLogger.App.Services;
 
 namespace VrcLogger.App.ViewModels;
@@ -55,7 +56,7 @@ public sealed partial class MainViewModel : ObservableObject
         Logs = new LogsViewModel(this);
         Avatars = new AvatarsViewModel(this);
         Notifications = new NotificationsViewModel(this);
-        SettingsTab = new SettingsViewModel(settings, ReopenDatabase, RestartAutoImportTimer, VacuumAsync, ReimportAllAsync);
+        SettingsTab = new SettingsViewModel(settings, ReopenDatabase, RestartAutoImportTimer, VacuumAsync, ReimportAllAsync, ExportViewerAsync);
 
         _autoImportTimer.Tick += async (_, _) => await ImportAsync();
         RestartAutoImportTimer();
@@ -86,6 +87,7 @@ public sealed partial class MainViewModel : ObservableObject
         var parseOptions = _settings.Settings.ToParseOptions();
         var retentionDays = _settings.Settings.RawLogRetentionDays;
         var noisePatterns = _settings.Settings.RawLogNoisePatterns.ToList();
+        var viewerPath = _settings.ResolvedViewerExportPath();
         IProgress<string> progress = new Progress<string>(msg => Status = msg);
         var changed = true;
         try
@@ -108,7 +110,22 @@ public sealed partial class MainViewModel : ObservableObject
                     Db.Vacuum(conn);
                     progress.Report($"DB 最適化完了: {before / 1024 / 1024} MB → {Db.FileSizeBytes(conn) / 1024 / 1024} MB");
                 }
-                return imported || pruned.Total > 0;
+                var changedNow = imported || pruned.Total > 0;
+
+                // 別PC閲覧用 HTML: 変更があったとき、またはまだ無いときだけ書き出す。失敗しても取り込みは成功扱い。
+                if (viewerPath is not null && (changedNow || !File.Exists(viewerPath)))
+                {
+                    try
+                    {
+                        ViewerExporter.Export(conn, viewerPath, DateTime.Now);
+                        progress.Report($"閲覧用 HTML を書き出しました: {Path.GetFileName(viewerPath)}");
+                    }
+                    catch (Exception ex)
+                    {
+                        progress.Report($"閲覧用 HTML の書き出しエラー: {ex.Message}");
+                    }
+                }
+                return changedNow;
             });
         }
         catch (Exception ex)
@@ -150,6 +167,30 @@ public sealed partial class MainViewModel : ObservableObject
             svc.MarkAllForReimport();
         });
         await ImportAsync();
+    }
+
+    private async Task ExportViewerAsync()
+    {
+        var viewerPath = _settings.ResolvedViewerExportPath();
+        if (viewerPath is null)
+        {
+            Status = "閲覧用 HTML の書き出し先が空のため、書き出しは無効です";
+            return;
+        }
+        var dbPath = _settings.ResolvedDbPath();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = Db.Open(dbPath);
+                ViewerExporter.Export(conn, viewerPath, DateTime.Now);
+            });
+            Status = $"閲覧用 HTML を書き出しました: {viewerPath}";
+        }
+        catch (Exception ex)
+        {
+            Status = $"閲覧用 HTML の書き出しエラー: {ex.Message}";
+        }
     }
 
     private async Task VacuumAsync()

@@ -16,6 +16,15 @@ VRChat のログファイル (`output_log_*.txt`) を解析して SQLite に蓄�
 - **タスクトレイ常駐** — 閉じるボタンでトレイに格納して常駐 (設定で無効化可)
 - **多重起動防止** — 二重に起動した場合は既存のウィンドウを前面に表示して終了
 
+### 別PCから見る
+
+DB (`vrclog.db`) は Dropbox などで共有された別PCから **アプリで開かないでください**。
+SQLite の WAL ファイルが別々に同期されたり、2台から同時に書き込まれたりして壊れる恐れがあります。
+
+代わりに、メインPCのアプリが取り込みのたびに `vrclog-viewer.html` を書き出します (設定 `ViewerExportPath`)。
+これは DB に触れない自己完結の HTML なので、別PCではダブルクリックしてブラウザで開くだけで、
+プレイヤー検索・セッションの同席者・通知を閲覧できます (メインPCの電源が切れていても可)。
+
 ## 動作環境
 
 - Windows 10 / 11
@@ -61,6 +70,7 @@ VS Code を使う場合は `.vscode/tasks.json` の `build` / `watch` タスク�
 | `AutoImportIntervalMinutes` | 自動取り込みの間隔 (分)。`0` で無効 |
 | `MinimizeToTray` | `true` の場合、閉じるボタンでタスクトレイに常駐 |
 | `RawLogRetentionDays` | 生ログ (`raw_events`) の保持日数。これより古い行は取り込み後に削除。`0` で無制限。セッション・プレイヤー・URL・通知は削除されない |
+| `ViewerExportPath` | 別PC閲覧用 HTML の書き出し先 (既定 `vrclog-viewer.html`)。取り込みで変更があるたびに更新。空文字で無効 |
 | `RawLogNoisePatterns` | 生ログに保存しない行のパターン (前方一致、先頭 `*` で部分一致)。既定はアバター読み込みなどの定型行。設定タブで編集可 |
 
 ## プロジェクト構成
