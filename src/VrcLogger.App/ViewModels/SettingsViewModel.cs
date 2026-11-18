@@ -12,10 +12,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly Action _restartAutoImport;
     private readonly Func<Task> _vacuum;
     private readonly Func<Task> _reimportAll;
-    private readonly Func<Task> _exportViewer;
-
-    [ObservableProperty]
-    private string _viewerExportPath;
 
     public ObservableCollection<string> LogFolders { get; }
 
@@ -32,6 +28,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _minimizeToTray;
 
     [ObservableProperty]
+    private bool _startWithWindows;
+
+    [ObservableProperty]
     private int _rawLogRetentionDays;
 
     /// <summary>1 行 1 パターン。</summary>
@@ -41,11 +40,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _saveStatus = "";
 
-    public SettingsViewModel(SettingsService settings, Action reopenDatabase, Action restartAutoImport, Func<Task> vacuum, Func<Task> reimportAll, Func<Task> exportViewer)
+    public SettingsViewModel(SettingsService settings, Action reopenDatabase, Action restartAutoImport, Func<Task> vacuum, Func<Task> reimportAll)
     {
         _reimportAll = reimportAll;
-        _exportViewer = exportViewer;
-        _viewerExportPath = settings.Settings.ViewerExportPath;
         _settings = settings;
         _reopenDatabase = reopenDatabase;
         _restartAutoImport = restartAutoImport;
@@ -56,6 +53,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         _dbPath = settings.Settings.DbPath;
         _autoImportIntervalMinutes = settings.Settings.AutoImportIntervalMinutes;
         _minimizeToTray = settings.Settings.MinimizeToTray;
+        try { _startWithWindows = StartupRegistration.IsEnabled(); }
+        catch { _startWithWindows = false; }
     }
 
     [RelayCommand]
@@ -85,12 +84,19 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.Settings.RawLogNoisePatterns = RawLogNoisePatterns
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
-        _settings.Settings.ViewerExportPath = (ViewerExportPath ?? "").Trim();
         _settings.Save();
         if (dbChanged)
             _reopenDatabase();
         _restartAutoImport();
-        SaveStatus = $"保存しました ({DateTime.Now:HH:mm:ss})";
+        try
+        {
+            StartupRegistration.SetEnabled(StartWithWindows);
+            SaveStatus = $"保存しました ({DateTime.Now:HH:mm:ss})";
+        }
+        catch (Exception ex)
+        {
+            SaveStatus = $"保存しました。自動起動の設定に失敗: {ex.Message}";
+        }
     }
 
     [RelayCommand]
@@ -102,13 +108,4 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [RelayCommand]
     private Task ReimportAll() => _reimportAll();
-
-    /// <summary>未保存の書き出し先も反映してから書き出す。</summary>
-    [RelayCommand]
-    private Task ExportViewer()
-    {
-        _settings.Settings.ViewerExportPath = (ViewerExportPath ?? "").Trim();
-        _settings.Save();
-        return _exportViewer();
-    }
 }

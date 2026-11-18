@@ -8,13 +8,13 @@
 :root {
   --bg: #f5f6f8; --panel: #ffffff; --text: #1d2129; --muted: #6b7280;
   --border: #d9dde3; --hover: #eef2f8; --sel: #dbe7fb; --accent: #2563eb;
-  --head: #eceff4; --zebra: #f9fafb; --warn: #b45309;
+  --head: #eceff4; --zebra: #f9fafb;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #14161a; --panel: #1c1f25; --text: #e5e7eb; --muted: #9aa3b0;
     --border: #2f343c; --hover: #262b34; --sel: #243a63; --accent: #6ea0ff;
-    --head: #252a32; --zebra: #20242b; --warn: #e0a24a;
+    --head: #252a32; --zebra: #20242b;
   }
 }
 * { box-sizing: border-box; }
@@ -67,7 +67,6 @@ main { flex: 1; min-height: 0; padding: 8px 12px; display: flex; }
 .list-item.sel { background: var(--sel); }
 .list-item .line { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
 .list-item b { word-break: break-all; }
-.warn { color: var(--warn); font-size: 11px; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; }
 th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { position: sticky; top: 0; background: var(--head); font-weight: 600; white-space: nowrap; z-index: 1; }
@@ -395,7 +394,6 @@ function renderSessions() {
       l.appendChild(h('b', null, v[1] || '(不明)'));
       l.appendChild(h('span', null, '(' + (visitCount.get(v[0]) || 0) + '人)'));
       var d = dur(v[3], v[4]); if (d) l.appendChild(h('span', 'muted small', d));
-      if (!v[5]) l.appendChild(h('span', 'warn muted', '※途中終了'));
       it.appendChild(l);
       activate(it, function () { go({ tab: 'sessions', visit: v[0] }); });
       sList.appendChild(it);
@@ -413,7 +411,7 @@ function renderVisitDetail() {
   hd.appendChild(h('div', 'title', v[1] || '(不明)'));
   hd.appendChild(h('div', 'muted small', v[2] || ''));
   var d = dur(v[3], v[4]);
-  hd.appendChild(h('div', 'small', (v[3] || '') + ' 〜 ' + (v[4] || '') + (d ? '  (' + d + ')' : '') + (v[5] ? '' : '  ※途中終了')));
+  hd.appendChild(h('div', 'small', (v[3] || '') + ' 〜 ' + (v[4] || '') + (d ? '  (' + d + ')' : '')));
   var lab = h('label', 'chk'); var cb = h('input'); cb.type = 'checkbox'; cb.checked = hideSelf;
   cb.addEventListener('change', function () { hideSelf = cb.checked; renderVisitDetail(); });
   lab.appendChild(cb); lab.appendChild(document.createTextNode('自分を隠す'));

@@ -21,6 +21,8 @@
         </StackPanel>
         <CheckBox Content="閉じるボタンでタスクトレイに常駐する (終了はトレイの右クリックから)"
                   IsChecked="{Binding MinimizeToTray}" Margin="0,8,0,0" />
+        <CheckBox Content="Windows のサインイン時に自動で起動する (トレイに格納して起動)"
+                  IsChecked="{Binding StartWithWindows}" Margin="0,8,0,0" />
 
         <TextBlock Text="生ログの保持" FontWeight="Bold" Margin="0,16,0,4" />
         <StackPanel Orientation="Horizontal">
@@ -38,14 +40,6 @@
             <Button Content="DB 最適化 (VACUUM)" Padding="10,3" Margin="6,0,0,0" Command="{Binding VacuumCommand}" />
             <Button Content="全ログを再取り込み" Padding="10,3" Margin="6,0,0,0" Command="{Binding ReimportAllCommand}"
                     ToolTip="取り込み済みのログファイルをすべて解析し直します (通知など新しく対応した項目を過去分にも反映)" />
-        </StackPanel>
-
-        <TextBlock Text="別PC閲覧用 HTML" FontWeight="Bold" Margin="0,16,0,4" />
-        <TextBox Text="{Binding ViewerExportPath, UpdateSourceTrigger=PropertyChanged}" />
-        <TextBlock Foreground="#777" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"
-                   Text="取り込みで変更があるたびに、誰と・いつ・どこで会ったかと通知を見られる HTML を書き出します。Dropbox 内に置けば別PCのブラウザで開けます。空欄で無効。相対パスは設定ファイルのあるフォルダ基準。" />
-        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-            <Button Content="今すぐ書き出し" Padding="10,3" Command="{Binding ExportViewerCommand}" />
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" Margin="0,16,0,0">

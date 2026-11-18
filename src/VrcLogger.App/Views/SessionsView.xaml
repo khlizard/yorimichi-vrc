@@ -53,18 +53,6 @@
                     <Run Text="{Binding SelectedVisit.LeaveTime}" />
                     <Run Text="{Binding SelectedVisit.Duration, Mode=OneWay, StringFormat=({0})}" />
                 </TextBlock>
-                <TextBlock Foreground="OrangeRed" Text="※ ログが途中で終了 (クラッシュ/実行中)">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding SelectedVisit.EndedCleanly}" Value="False">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
                 <CheckBox Content="自分を隠す" IsChecked="{Binding HideLocalPlayer}" Margin="0,4,0,0" />
             </StackPanel>
 

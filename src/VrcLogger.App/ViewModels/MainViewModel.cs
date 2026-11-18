@@ -14,6 +14,9 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly DispatcherTimer _autoImportTimer = new();
     private SqliteConnection _queryConn;
+    private DateTime _nextPruneAt = DateTime.MinValue;
+    private static readonly TimeSpan PruneInterval = TimeSpan.FromHours(1);
+    private bool _refreshPending;
 
     public QueryService Query { get; private set; }
     public PlayersViewModel Players { get; }
@@ -56,9 +59,13 @@ public sealed partial class MainViewModel : ObservableObject
         Logs = new LogsViewModel(this);
         Avatars = new AvatarsViewModel(this);
         Notifications = new NotificationsViewModel(this);
-        SettingsTab = new SettingsViewModel(settings, ReopenDatabase, RestartAutoImportTimer, VacuumAsync, ReimportAllAsync, ExportViewerAsync);
+        SettingsTab = new SettingsViewModel(settings, ReopenDatabase, () =>
+        {
+            RequestPrune();
+            RestartAutoImportTimer();
+        }, VacuumAsync, ReimportAllAsync);
 
-        _autoImportTimer.Tick += async (_, _) => await ImportAsync();
+        _autoImportTimer.Tick += async (_, _) => await RunImportAsync(automatic: true);
         RestartAutoImportTimer();
     }
 
@@ -76,8 +83,12 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnDateFromChanged(DateTime? value) => RefreshAll();
     partial void OnDateToChanged(DateTime? value) => RefreshAll();
 
+    private void RequestPrune() => _nextPruneAt = DateTime.MinValue;
+
     [RelayCommand]
-    private async Task ImportAsync()
+    private Task ImportAsync() => RunImportAsync(automatic: false);
+
+    private async Task RunImportAsync(bool automatic)
     {
         if (IsImporting)
             return;
@@ -87,7 +98,8 @@ public sealed partial class MainViewModel : ObservableObject
         var parseOptions = _settings.Settings.ToParseOptions();
         var retentionDays = _settings.Settings.RawLogRetentionDays;
         var noisePatterns = _settings.Settings.RawLogNoisePatterns.ToList();
-        var viewerPath = _settings.ResolvedViewerExportPath();
+        // 生ログの整理は重いので 1 時間に 1 回だけ (設定保存・全再取り込みで即時に戻す)。
+        var doPrune = DateTime.Now >= _nextPruneAt;
         IProgress<string> progress = new Progress<string>(msg => Status = msg);
         var changed = true;
         try
@@ -100,33 +112,25 @@ public sealed partial class MainViewModel : ObservableObject
                 var svc = new ImportService(conn, parseOptions);
                 var imported = svc.ImportFolders(folders, progress).Imported > 0;
 
-                var pruned = svc.Prune(retentionDays, noisePatterns);
-                if (pruned.Total > 0)
-                    progress.Report($"生ログ整理: {pruned.ExpiredDeleted} 期限切れ / {pruned.NoiseDeleted} ノイズ を削除");
-                if (pruned.Total >= VacuumThresholdRows)
+                var prunedTotal = 0;
+                if (doPrune)
                 {
-                    progress.Report("DB 最適化中 (VACUUM)…");
-                    var before = Db.FileSizeBytes(conn);
-                    Db.Vacuum(conn);
-                    progress.Report($"DB 最適化完了: {before / 1024 / 1024} MB → {Db.FileSizeBytes(conn) / 1024 / 1024} MB");
-                }
-                var changedNow = imported || pruned.Total > 0;
-
-                // 別PC閲覧用 HTML: 変更があったとき、またはまだ無いときだけ書き出す。失敗しても取り込みは成功扱い。
-                if (viewerPath is not null && (changedNow || !File.Exists(viewerPath)))
-                {
-                    try
+                    var pruned = svc.Prune(retentionDays, noisePatterns);
+                    prunedTotal = pruned.Total;
+                    if (pruned.Total > 0)
+                        progress.Report($"生ログ整理: {pruned.ExpiredDeleted} 期限切れ / {pruned.NoiseDeleted} ノイズ を削除");
+                    if (pruned.Total >= VacuumThresholdRows)
                     {
-                        ViewerExporter.Export(conn, viewerPath, DateTime.Now);
-                        progress.Report($"閲覧用 HTML を書き出しました: {Path.GetFileName(viewerPath)}");
-                    }
-                    catch (Exception ex)
-                    {
-                        progress.Report($"閲覧用 HTML の書き出しエラー: {ex.Message}");
+                        progress.Report("DB 最適化中 (VACUUM)…");
+                        var before = Db.FileSizeBytes(conn);
+                        Db.Vacuum(conn);
+                        progress.Report($"DB 最適化完了: {before / 1024 / 1024} MB → {Db.FileSizeBytes(conn) / 1024 / 1024} MB");
                     }
                 }
-                return changedNow;
+                return imported || prunedTotal > 0;
             });
+            if (doPrune)
+                _nextPruneAt = DateTime.Now + PruneInterval;
         }
         catch (Exception ex)
         {
@@ -136,13 +140,37 @@ public sealed partial class MainViewModel : ObservableObject
         {
             IsImporting = false;
         }
-        // 自動取り込みで変更がないたびに一覧を再読込すると選択状態が飛ぶので、変更時のみ更新。
-        if (changed)
+        // 変更がないたびに一覧を再読込すると選択状態が飛ぶので、変更時のみ更新。
+        if (changed && !automatic)
             RefreshAll();
+        else if (changed)
+            AutoRefresh();
+        else if (!automatic && _refreshPending)
+            RefreshAll();
+    }
+
+    /// <summary>自動取り込み後の更新。続きを読み込んだ一覧 (プレイヤー・生ログ) は位置が飛ぶので保留する。</summary>
+    private void AutoRefresh()
+    {
+        Sessions.Refresh();
+        Urls.Refresh();
+        Avatars.Refresh();
+        Notifications.Refresh();
+        if (Players.HasExtraPages)
+            _refreshPending = true;
+        else
+            Players.Refresh();
+        if (Logs.HasExtraPages)
+            _refreshPending = true;
+        else
+            Logs.Refresh();
+        if (_refreshPending)
+            Status = "新しいログを取り込みました（続きを読み込んだ一覧は「再取り込み」で更新）";
     }
 
     public void RefreshAll()
     {
+        _refreshPending = false;
         Players.Refresh();
         Sessions.Refresh();
         Urls.Refresh();
@@ -158,6 +186,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (IsImporting)
             return;
+        RequestPrune();
         var dbPath = _settings.ResolvedDbPath();
         await Task.Run(() =>
         {
@@ -166,26 +195,35 @@ public sealed partial class MainViewModel : ObservableObject
             svc.BackfillAvatarEventsFromRawEvents();
             svc.MarkAllForReimport();
         });
-        await ImportAsync();
+        await RunImportAsync(automatic: false);
     }
 
+    [RelayCommand]
     private async Task ExportViewerAsync()
     {
-        var viewerPath = _settings.ResolvedViewerExportPath();
-        if (viewerPath is null)
+        var last = _settings.Settings.LastViewerExportFolder;
+        var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Status = "閲覧用 HTML の書き出し先が空のため、書き出しは無効です";
+            Title = "閲覧用 HTML を書き出す",
+            Filter = "HTML ファイル (*.html)|*.html",
+            DefaultExt = ".html",
+            FileName = "vrclog-viewer.html",
+            InitialDirectory = !string.IsNullOrWhiteSpace(last) && Directory.Exists(last) ? last : _settings.BaseDir,
+        };
+        if (dialog.ShowDialog() != true)
             return;
-        }
+        var path = dialog.FileName;
         var dbPath = _settings.ResolvedDbPath();
         try
         {
+            _settings.Settings.LastViewerExportFolder = Path.GetDirectoryName(path);
+            _settings.Save();
             await Task.Run(() =>
             {
                 using var conn = Db.Open(dbPath);
-                ViewerExporter.Export(conn, viewerPath, DateTime.Now);
+                ViewerExporter.Export(conn, path, DateTime.Now);
             });
-            Status = $"閲覧用 HTML を書き出しました: {viewerPath}";
+            Status = $"閲覧用 HTML を書き出しました: {path}";
         }
         catch (Exception ex)
         {

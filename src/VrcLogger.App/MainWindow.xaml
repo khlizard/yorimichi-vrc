@@ -6,6 +6,13 @@
         Icon="/Assets/icon.ico"
         WindowStartupLocation="CenterScreen">
     <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="ファイル(_F)">
+                <MenuItem Header="閲覧用 HTML を書き出す…" Command="{Binding ExportViewerCommand}" />
+                <Separator />
+                <MenuItem Header="終了(_X)" Click="Exit_Click" />
+            </MenuItem>
+        </Menu>
         <Border DockPanel.Dock="Top" Padding="8,6" BorderBrush="#DDD" BorderThickness="0,0,0,1">
             <DockPanel>
                 <Button DockPanel.Dock="Left" Content="再取り込み" Padding="10,3"

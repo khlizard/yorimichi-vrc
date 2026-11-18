@@ -20,6 +20,9 @@ public sealed partial class LogsViewModel(MainViewModel main) : ObservableObject
     partial void OnSelectedLevelChanged(string value) => Search();
 
     private const int PageSize = 200;
+
+    /// <summary>「続きを読み込む」で 1 ページ目を超えて表示しているか。</summary>
+    public bool HasExtraPages => Results.Count > PageSize;
     private string _activeTerm = "";
     private string? _activeLevel;
     private bool _isLoading;

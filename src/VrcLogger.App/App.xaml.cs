@@ -1,4 +1,5 @@
 using System.Windows;
+using VrcLogger.App.Services;
 
 namespace VrcLogger.App;
 
@@ -27,6 +28,9 @@ public partial class App : Application
 
         base.OnStartup(e);
 
+        var startInTray = e.Args.Contains(StartupRegistration.TrayArg, StringComparer.OrdinalIgnoreCase);
+        try { StartupRegistration.RefreshPathIfEnabled(); } catch { }
+
         // Keep the app alive on unexpected UI-thread exceptions; show what happened instead of vanishing.
         DispatcherUnhandledException += (_, args) =>
         {
@@ -43,7 +47,9 @@ public partial class App : Application
             (_, _) => Dispatcher.BeginInvoke(window.ShowFromTray),
             null, Timeout.Infinite, executeOnlyOnce: false);
 
-        window.Show();
+        if (!startInTray)
+            window.Show();
+        _ = window.StartAsync();
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -17,6 +17,9 @@ public sealed partial class PlayersViewModel(MainViewModel main) : ObservableObj
     private PlayerHit? _selectedPlayer;
 
     private const int PageSize = 100;
+
+    /// <summary>「続きを読み込む」で 1 ページ目を超えて表示しているか。</summary>
+    public bool HasExtraPages => Players.Count > PageSize;
     private string _activeTerm = "";
 
     [ObservableProperty]

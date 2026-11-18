@@ -19,11 +19,13 @@ public partial class MainWindow : Window
         _vm = new MainViewModel(_settings);
         DataContext = _vm;
         SetupTrayIcon();
-        Loaded += async (_, _) =>
-        {
-            _vm.RefreshAll(); // show whatever is already in the DB immediately
-            await _vm.ImportCommand.ExecuteAsync(null);
-        };
+    }
+
+    /// <summary>起動時の初期表示と初回取り込み。ウィンドウを表示するかどうかとは独立に呼ぶ。</summary>
+    public async Task StartAsync()
+    {
+        _vm.RefreshAll(); // show whatever is already in the DB immediately
+        await _vm.ImportCommand.ExecuteAsync(null);
     }
 
     private void SetupTrayIcon()
@@ -31,12 +33,9 @@ public partial class MainWindow : Window
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("開く", null, (_, _) => ShowFromTray());
         menu.Items.Add("今すぐ取り込み", null, async (_, _) => await _vm.ImportCommand.ExecuteAsync(null));
+        menu.Items.Add("閲覧用 HTML を書き出す…", null, async (_, _) => await _vm.ExportViewerCommand.ExecuteAsync(null));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add("終了", null, (_, _) =>
-        {
-            _exitRequested = true;
-            Close();
-        });
+        menu.Items.Add("終了", null, (_, _) => ExitApp());
         _tray = new System.Windows.Forms.NotifyIcon
         {
             Icon = CreateTrayIcon(),
@@ -64,6 +63,14 @@ public partial class MainWindow : Window
         WindowState = WindowState.Normal;
         Activate();
     }
+
+    private void ExitApp()
+    {
+        _exitRequested = true;
+        Close();
+    }
+
+    private void Exit_Click(object sender, RoutedEventArgs e) => ExitApp();
 
     protected override void OnClosing(CancelEventArgs e)
     {

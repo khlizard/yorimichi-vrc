@@ -10,7 +10,7 @@ public sealed class AppSettings
     public List<string> LogFolders { get; set; } = [];
 
     /// <summary>0 で自動取り込み無効。</summary>
-    public int AutoImportIntervalMinutes { get; set; } = 5;
+    public int AutoImportIntervalMinutes { get; set; } = 1;
 
     /// <summary>閉じるボタンで終了せずタスクトレイに常駐する。</summary>
     public bool MinimizeToTray { get; set; } = true;
@@ -21,8 +21,8 @@ public sealed class AppSettings
     /// <summary>生ログから除外する行 (前方一致。先頭 '*' で部分一致)。</summary>
     public List<string> RawLogNoisePatterns { get; set; } = RawLogNoise.Default.ToList();
 
-    /// <summary>別PC閲覧用 HTML の書き出し先。空文字で書き出さない。</summary>
-    public string ViewerExportPath { get; set; } = "vrclog-viewer.html";
+    /// <summary>閲覧用 HTML を前回書き出したフォルダ (保存ダイアログの初期位置)。</summary>
+    public string? LastViewerExportFolder { get; set; }
 
     public ParseOptions ToParseOptions() => new(RawLogNoisePatterns);
 }
@@ -78,15 +78,6 @@ public sealed class SettingsService
     public string ResolvedDbPath()
     {
         var p = Environment.ExpandEnvironmentVariables(Settings.DbPath);
-        return Path.IsPathRooted(p) ? p : Path.Combine(BaseDir, p);
-    }
-
-    /// <summary>Absolute path of the viewer HTML, or null when export is disabled.</summary>
-    public string? ResolvedViewerExportPath()
-    {
-        if (string.IsNullOrWhiteSpace(Settings.ViewerExportPath))
-            return null;
-        var p = Environment.ExpandEnvironmentVariables(Settings.ViewerExportPath.Trim());
         return Path.IsPathRooted(p) ? p : Path.Combine(BaseDir, p);
     }
 
