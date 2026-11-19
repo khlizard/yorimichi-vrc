@@ -1,0 +1,491 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #777777;
+  --faint: #999999;
+  --status: #555555;
+  --line: #dddddd;
+  --line-soft: #eeeeee;
+  --local-bg: #fff7de;
+  --select-bg: #cce4f7;
+  --select-fg: #000000;
+  --header-bg: #f5f5f5;
+  --button-bg: #f0f0f0;
+  --button-hover: #e5e5e5;
+  --button-border: #adadad;
+  --ok: #2e7d32;
+  --focus: #0a64c8;
+  --font: "Yu Gothic UI", "Segoe UI", "Meiryo", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: var(--button-bg);
+  border: 1px solid var(--button-border);
+  padding: 2px 12px;
+  min-height: 24px;
+  cursor: default;
+}
+button:hover:not(:disabled) {
+  background: var(--button-hover);
+}
+button:disabled {
+  color: #999;
+  border-color: #cfcfcf;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="date"],
+select,
+textarea {
+  border: 1px solid var(--button-border);
+  background: #fff;
+  padding: 2px 4px;
+  min-height: 24px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+
+.muted {
+  color: var(--muted);
+}
+.faint {
+  color: var(--faint);
+}
+.small {
+  font-size: 11px;
+}
+.wrap {
+  white-space: normal;
+  word-break: break-all;
+}
+.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.grow {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* ---- Layout ---- */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.toolbar .period-label {
+  margin-left: 16px;
+}
+.toolbar .status {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 8px;
+  color: var(--status);
+}
+
+.tabstrip {
+  display: flex;
+  padding: 4px 6px 0;
+  border-bottom: 1px solid var(--line);
+  gap: 2px;
+}
+.tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  padding: 3px 14px;
+  min-height: 26px;
+  margin-bottom: -1px;
+}
+.tab:hover:not(:disabled) {
+  background: var(--line-soft);
+}
+.tab.active {
+  background: var(--bg);
+  border-color: var(--line);
+  border-bottom: 1px solid var(--bg);
+}
+
+.tabbody {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+}
+/* Inactive tabs stay laid out (state and scroll survive) but are invisible and inert. */
+.tabpanel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  visibility: hidden;
+  pointer-events: none;
+}
+.tabpanel.active {
+  visibility: visible;
+  pointer-events: auto;
+}
+.tabpanel.scroll {
+  overflow: auto;
+}
+.tabpanel.scroll > * {
+  flex: 0 0 auto;
+}
+.tabpanel > * {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.tab-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.split {
+  display: flex;
+  min-height: 0;
+}
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 auto;
+}
+.pane.grow {
+  flex: 1 1 0;
+}
+.pane.column > * {
+  flex: 0 0 auto;
+}
+.pane.column > .grow-box {
+  flex: 1 1 0;
+}
+
+.grow-box {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fixed-box {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.fill {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.searchbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  flex: 0 0 auto;
+}
+.searchbar input[type="text"] {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.splitter {
+  flex: 0 0 auto;
+  background: var(--line-soft);
+}
+.splitter:hover,
+.splitter:focus-visible {
+  background: var(--line);
+}
+.splitter-col {
+  width: 5px;
+  cursor: col-resize;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+.splitter-row {
+  height: 5px;
+  cursor: row-resize;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.section-label {
+  flex: 0 0 auto;
+  font-weight: bold;
+  padding: 4px 6px;
+}
+.footnote {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 4px 6px;
+}
+
+/* ---- Virtual list / grid ---- */
+.vlist {
+  overflow: auto;
+  position: relative;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.vlist-inner {
+  position: relative;
+  width: 100%;
+}
+.vlist-body {
+  position: relative;
+  width: 100%;
+}
+.vrow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  border-bottom: 1px solid var(--line-soft);
+  user-select: none;
+}
+.vrow.selected {
+  background: var(--select-bg);
+  color: var(--select-fg);
+}
+.vlist:not(:focus-within) .vrow.selected {
+  background: #e3e3e3;
+}
+.grid .vrow {
+  display: grid;
+  align-items: center;
+}
+.grid .vrow.local {
+  background: var(--local-bg);
+  font-weight: bold;
+}
+.grid .vrow.local.selected {
+  background: var(--select-bg);
+}
+.grid-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  align-items: center;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--line);
+  font-weight: normal;
+}
+.cell {
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.grid-header .cell {
+  border-right: 1px solid var(--line);
+  color: var(--status);
+}
+.cell.right {
+  text-align: right;
+}
+.item {
+  padding: 3px 6px;
+  min-width: 0;
+}
+.item .line {
+  line-height: 18px;
+}
+a.link {
+  color: #0b57b0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---- Sessions header ---- */
+.visit-header {
+  padding: 8px 8px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.visit-title {
+  font-size: 16px;
+  font-weight: bold;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* ---- Context menu / modal ---- */
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 220px;
+  background: #fff;
+  border: 1px solid var(--button-border);
+  padding: 2px 0;
+}
+.context-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 3px 12px;
+}
+.context-menu button:hover,
+.context-menu button:focus-visible {
+  background: var(--select-bg);
+}
+.context-menu .hint {
+  color: var(--muted);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.6);
+}
+.modal {
+  min-width: 320px;
+  max-width: 560px;
+  background: #fff;
+  border: 1px solid var(--button-border);
+}
+.modal-title {
+  padding: 6px 10px;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--line);
+}
+.modal-body {
+  padding: 14px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow: auto;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 10px;
+}
+.modal-footer button {
+  min-width: 72px;
+}
+
+/* ---- Settings ---- */
+.settings {
+  display: block;
+}
+.settings-inner {
+  max-width: 700px;
+  margin: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.section-title {
+  font-weight: bold;
+  margin-top: 12px;
+}
+.section-title:first-child {
+  margin-top: 0;
+}
+.folder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  height: 140px;
+  overflow: auto;
+  border: 1px solid var(--button-border);
+}
+.folder-list li {
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.folder-list li.selected {
+  background: var(--select-bg);
+}
+.button-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.save-row {
+  margin-top: 12px;
+}
+.save-status {
+  color: var(--ok);
+}
+.hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.num {
+  width: 60px;
+}
+.field-label {
+  margin-top: 4px;
+}
+.patterns {
+  height: 160px;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 11px;
+  resize: vertical;
+  white-space: pre;
+}

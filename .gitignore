@@ -1,10 +1,13 @@
-bin/
-obj/
-*.user
+# ビルド出力
+target/
+node_modules/
+dist/
+releases/
+src-tauri/gen/
+
 vrclog.db
 vrclog.db-wal
 vrclog.db-shm
-*_wpftmp.csproj
 
 # VRChat 実ログ（ユーザーIDなどを含む）
 logs/

@@ -2,40 +2,35 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "dev",
+            "detail": "アプリを開発モードで起動 (pnpm tauri dev)",
+            "type": "shell",
+            "command": "pnpm tauri dev",
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "test",
+            "detail": "Rust のテスト (cargo test --workspace)",
+            "type": "shell",
+            "command": "cargo test --workspace",
+            "group": { "kind": "test", "isDefault": true },
+            "problemMatcher": "$rustc"
+        },
+        {
             "label": "build",
-            "command": "dotnet",
-            "type": "process",
-            "args": [
-                "build",
-                "${workspaceFolder}/tests/VrcLogger.Core.Tests/VrcLogger.Core.Tests.csproj",
-                "/property:GenerateFullPaths=true",
-                "/consoleloggerparameters:NoSummary;ForceNoAlign"
-            ],
-            "problemMatcher": "$msCompile"
+            "detail": "リリース版 exe をビルド (pnpm tauri build --no-bundle)",
+            "type": "shell",
+            "command": "pnpm tauri build --no-bundle",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": "$rustc"
         },
         {
-            "label": "publish",
-            "command": "dotnet",
-            "type": "process",
-            "args": [
-                "publish",
-                "${workspaceFolder}/tests/VrcLogger.Core.Tests/VrcLogger.Core.Tests.csproj",
-                "/property:GenerateFullPaths=true",
-                "/consoleloggerparameters:NoSummary;ForceNoAlign"
-            ],
-            "problemMatcher": "$msCompile"
-        },
-        {
-            "label": "watch",
-            "command": "dotnet",
-            "type": "process",
-            "args": [
-                "watch",
-                "run",
-                "--project",
-                "${workspaceFolder}/tests/VrcLogger.Core.Tests/VrcLogger.Core.Tests.csproj"
-            ],
-            "problemMatcher": "$msCompile"
+            "label": "pack",
+            "detail": "Velopack のインストーラーを作成 (scripts/pack.ps1)",
+            "type": "shell",
+            "command": "pwsh -NoProfile -File scripts/pack.ps1",
+            "problemMatcher": []
         }
     ]
 }

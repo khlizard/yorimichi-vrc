@@ -1,9 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/VrcLogger.App/VrcLogger.App.csproj" />
-    <Project Path="src/VrcLogger.Core/VrcLogger.Core.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/VrcLogger.Core.Tests/VrcLogger.Core.Tests.csproj" />
-  </Folder>
-</Solution>
