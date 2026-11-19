@@ -18,7 +18,18 @@ pub fn open(db_path: impl AsRef<Path>) -> Result<Connection> {
     conn.pragma_update(None, "foreign_keys", true)?;
     // journal_mode returns a row, so read it back instead of executing blindly.
     conn.query_row("PRAGMA journal_mode=WAL;", [], |r| r.get::<_, String>(0))?;
+    // Without a limit the -wal file keeps its high-water size (hundreds of MB after a re-import).
+    conn.query_row(&format!("PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES};"), [], |r| r.get::<_, i64>(0))?;
     Ok(conn)
+}
+
+/// Size the `-wal` file is truncated back to after a checkpoint.
+pub const WAL_SIZE_LIMIT_BYTES: i64 = 32 * 1024 * 1024;
+
+/// Copies the whole WAL into the database file and truncates the `-wal` file to 0 bytes.
+pub fn checkpoint_truncate(conn: &Connection) -> Result<()> {
+    conn.query_row("PRAGMA wal_checkpoint(TRUNCATE);", [], |_| Ok(()))?;
+    Ok(())
 }
 
 /// Creates all tables, FTS5 index, triggers and indices if they do not exist yet.

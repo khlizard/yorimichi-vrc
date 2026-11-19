@@ -24,6 +24,21 @@ fn schema_has_fts5_table_and_wal() {
 }
 
 #[test]
+fn wal_size_is_limited_and_checkpoint_truncates_it() {
+    let fx = Fixture::new();
+    let limit: i64 = fx.conn.query_row("PRAGMA journal_size_limit", [], |r| r.get(0)).unwrap();
+    assert_eq!(limit, db::WAL_SIZE_LIMIT_BYTES);
+
+    fx.conn
+        .execute_batch("CREATE TABLE t(x TEXT); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000) INSERT INTO t SELECT hex(randomblob(100)) FROM n;")
+        .unwrap();
+    let wal = fx.dir.path().join("test.db-wal");
+    assert!(std::fs::metadata(&wal).unwrap().len() > 0);
+    db::checkpoint_truncate(&fx.conn).unwrap();
+    assert_eq!(std::fs::metadata(&wal).unwrap().len(), 0);
+}
+
+#[test]
 fn ts_escape_like_and_duration_formats() {
     assert_eq!(db::ts(dt(2026, 6, 24, 1, 2, 3)), "2026-06-24 01:02:03");
     assert_eq!(db::escape_like(r"a%b_c\d"), r"a\%b\_c\\d");

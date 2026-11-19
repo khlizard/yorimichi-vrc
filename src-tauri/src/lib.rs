@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 
 use app::AppState;
@@ -151,6 +151,25 @@ pub fn run() {
             tauri::async_runtime::spawn(app::run_import(handle.clone(), false));
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running VrcLogger");
+        .build(tauri::generate_context!())
+        .expect("error while building VrcLogger")
+        .run(|app, event| {
+            if let RunEvent::Exit = event {
+                close_query_db(app);
+            }
+        });
+}
+
+/// `app.exit` ends the process without dropping managed state, so close the query
+/// connection here; closing the last connection lets SQLite fold the WAL back and delete it.
+fn close_query_db(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    let Some(conn) = st.query.lock().unwrap().take() else {
+        return;
+    };
+    // While an import holds the write lock the checkpoint would wait out the busy timeout.
+    if !st.importing.load(Ordering::SeqCst) {
+        let _ = vrclogger_core::data::db::checkpoint_truncate(&conn);
+    }
+    drop(conn);
 }
