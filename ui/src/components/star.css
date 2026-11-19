@@ -1,0 +1,26 @@
+.star-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: -2px;
+  color: var(--muted);
+}
+.star-icon.on {
+  color: var(--star);
+}
+.star-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  vertical-align: middle;
+}
+.star-btn:hover:not(:disabled) {
+  background: var(--button-hover);
+}
+.star-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}

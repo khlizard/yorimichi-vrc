@@ -152,7 +152,7 @@
 }
 .tl-star {
   flex: 0 0 auto;
-  display: block;
+  display: inline-flex;
 }
 .tl-meta {
   color: var(--muted);

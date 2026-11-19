@@ -3,10 +3,13 @@ import { visits as fetchVisits, type VisitRow } from "../api";
 import { useDialog } from "../components/Dialog";
 import { Splitter } from "../components/Splitter";
 import { VirtualList, type ListHandle } from "../components/VirtualList";
+import { StarButton, StarIcon } from "../components/Star";
 import { useLatest } from "../components/hooks";
 import { errText, nullIfBlank, type TabHandle } from "../components/util";
 import { openWorldPage, setWorldNote, worlds as fetchWorlds, type WorldRow, type WorldSort } from "../libraryApi";
 import { useNav } from "../nav";
+import { Lightbox } from "../photos/Lightbox";
+import { PhotoStrip, useRecentPhotos } from "../photos/PhotoStrip";
 import { fmtDur, nf } from "../timeline/format";
 import "./worlds.css";
 
@@ -24,12 +27,14 @@ const SORTS: { id: WorldSort; label: string }[] = [
 
 const VISIT_CAP = 200;
 
-function Star() {
+/** Memos are one line; older multi-line memos are shown joined by a space. */
+const oneLine = (s: string) => s.replace(/\s*[\r\n]+\s*/g, " ");
+
+function FavMark() {
   return (
-    <svg className="wd-star" width="12" height="12" viewBox="0 0 24 24" role="img" aria-label="お気に入り">
-      <title>お気に入り</title>
-      <path fill="currentColor" d="M12 2l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 18l-6.4 3.6 1.4-7.1-5.3-5 7.2-.9z" />
-    </svg>
+    <span className="wd-star" role="img" aria-label="お気に入り" title="お気に入り">
+      <StarIcon filled size={12} />
+    </span>
   );
 }
 
@@ -47,6 +52,8 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
   const [saving, setSaving] = useState(false);
   const [visitList, setVisitList] = useState<VisitRow[]>([]);
   const [allVisits, setAllVisits] = useState(false);
+  const [lbIndex, setLbIndex] = useState<number | null>(null);
+  const [favBusy, setFavBusy] = useState(false);
   const listHandle = useRef<ListHandle>(null);
   const gen = useRef(0);
   const visitGen = useRef(0);
@@ -84,6 +91,7 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
     setDraft(null);
     setSaved(false);
     setAllVisits(false);
+    setLbIndex(null);
     void loadVisits(listRef.current.find((r) => r.id === id) ?? null);
   };
 
@@ -158,9 +166,31 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
 
   const sel = list.find((r) => r.id === selectedId) ?? null;
   const d = sel && draft && draft.id === sel.id ? draft : null;
-  const memo = d ? d.memo : (sel?.memo ?? "");
+  const memo = d ? d.memo : oneLine(sel?.memo ?? "");
   const favorite = d ? d.favorite : (sel?.favorite ?? false);
-  const changed = sel != null && (memo !== sel.memo || favorite !== sel.favorite);
+  const [worldPhotos, setWorldPhotos] = useRecentPhotos(sel ? { worldRefId: sel.id } : null);
+  const changed = sel != null && (memo !== oneLine(sel.memo) || favorite !== sel.favorite);
+
+  // Toggling the star saves at once, together with the last saved memo (not the unsaved edit).
+  const toggleFavorite = async () => {
+    if (!sel || favBusy) return;
+    const next = !favorite;
+    setFavBusy(true);
+    setList((l) => l.map((r) => (r.id === sel.id ? { ...r, favorite: next } : r)));
+    listRef.current = listRef.current.map((r) => (r.id === sel.id ? { ...r, favorite: next } : r));
+    setDraft((cur) => (cur && cur.id === sel.id ? { ...cur, favorite: next } : cur));
+    try {
+      await setWorldNote(sel.id, sel.memo, next);
+    } catch (e) {
+      const revert = (r: WorldRow) => (r.id === sel.id ? { ...r, favorite: !next } : r);
+      setList((l) => l.map(revert));
+      listRef.current = listRef.current.map(revert);
+      setDraft((cur) => (cur && cur.id === sel.id ? { ...cur, favorite: !next } : cur));
+      showError(errText(e));
+    } finally {
+      setFavBusy(false);
+    }
+  };
 
   const edit = (patch: { memo?: string; favorite?: boolean }) => {
     if (!sel) return;
@@ -228,7 +258,7 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
             <div className="item">
               <div className="line ellipsis">
                 <b>{r.name}</b>
-                {r.favorite && <Star />}
+                {r.favorite && <FavMark />}
               </div>
               <div className="line ellipsis muted">
                 最後: {r.lastVisit?.slice(0, 10) ?? "-"} · {nf(r.visitCount)} 回 · {fmtDur(r.totalSeconds)} · 写真 {nf(r.photoCount)}
@@ -242,16 +272,14 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
         {!sel && <div className="wd-none">{started.current ? "該当するワールドがありません。" : ""}</div>}
         {sel && (
           <>
-            <h2 className="wd-title">{sel.name}</h2>
+            <div className="wd-titlebar">
+              <h2 className="wd-title">{sel.name}</h2>
+              <StarButton active={sel.favorite} disabled={favBusy} onToggle={() => void toggleFavorite()} />
+            </div>
             <div className="wd-row">
               {sel.worldId && (
                 <button type="button" onClick={() => openWorldPage(sel.worldId).catch((e) => showError(errText(e)))}>
                   ワールドのページを開く
-                </button>
-              )}
-              {sel.photoCount > 0 && (
-                <button type="button" onClick={() => nav.showPhotos({ worldRefId: sel.id, label: sel.name })}>
-                  このワールドの写真
                 </button>
               )}
             </div>
@@ -277,13 +305,35 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
                 <dd>{nf(sel.photoCount)} 枚</dd>
               </div>
             </dl>
+            {worldPhotos.length > 0 && (
+              <div className="wd-photos">
+                <PhotoStrip
+                  clip
+                  title="写真"
+                  photos={worldPhotos}
+                  onOpen={setLbIndex}
+                  actions={
+                    <button type="button" onClick={() => nav.showPhotos({ worldRefId: sel.id, label: sel.name })}>
+                      すべて見る ({nf(sel.photoCount)})
+                    </button>
+                  }
+                />
+              </div>
+            )}
             <h3>メモ</h3>
-            <label className="check">
-              <input type="checkbox" checked={favorite} onChange={(e) => edit({ favorite: e.target.checked })} />
-              お気に入り
-            </label>
-            <textarea aria-label="ワールドのメモ" value={memo} onChange={(e) => edit({ memo: e.target.value })} />
-            <div className="wd-row">
+            <div className="wd-memo">
+              <input
+                type="text"
+                aria-label="ワールドのメモ"
+                value={memo}
+                onChange={(e) => edit({ memo: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    void save();
+                  }
+                }}
+              />
               <button type="button" disabled={!changed || saving} onClick={() => void save()}>
                 保存
               </button>
@@ -317,6 +367,23 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
           </>
         )}
       </div>
+      {lbIndex !== null && (
+        <Lightbox
+          items={worldPhotos}
+          index={lbIndex}
+          onIndexChange={setLbIndex}
+          onClose={() => setLbIndex(null)}
+          onNavigateVisit={(id) => {
+            setLbIndex(null);
+            nav.showVisit(id);
+          }}
+          onNavigatePlayer={(id, name) => {
+            setLbIndex(null);
+            nav.showPlayer(id, name);
+          }}
+          onFavoriteChanged={(id, fav) => setWorldPhotos((l) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
+        />
+      )}
     </div>
   );
 });

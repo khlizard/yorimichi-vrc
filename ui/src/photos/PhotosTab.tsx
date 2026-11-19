@@ -11,6 +11,7 @@ import {
 import { describeAdd, useAddToAlbum } from "../albums/addToAlbum";
 import { useDialog } from "../components/Dialog";
 import { useLatest } from "../components/hooks";
+import { StarIcon } from "../components/Star";
 import { errText, type TabHandle } from "../components/util";
 import { useNav } from "../nav";
 import { Lightbox } from "./Lightbox";
@@ -270,7 +271,7 @@ export function PhotosTab({
             void reload(true);
           }}
         >
-          お気に入りのみ
+          <StarIcon filled size={13} /> お気に入りのみ
         </button>
         <div className="ps-seg" role="group" aria-label="サムネイルの大きさ">
           {SIZES.map((s) => (

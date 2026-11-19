@@ -94,10 +94,16 @@
 .st-heat .cell-btn.l4:hover:not(:disabled) {
   background: var(--lv4);
 }
-.st-legend {
-  display: flex;
+.st-legend-scale {
+  display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.st-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
   font-size: 11px;
   color: var(--status);
   margin-bottom: 20px;

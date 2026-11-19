@@ -3,6 +3,7 @@ import { fullUrl, openPhoto, photoDetail, revealPhoto, setPhotoFavorite, thumbUr
 import { useDialog } from "../components/Dialog";
 import { useLatest } from "../components/hooks";
 import { errText } from "../components/util";
+import { StarIcon } from "../components/Star";
 import { photoLabel } from "./photoUtil";
 import "./photos.css";
 
@@ -205,14 +206,9 @@ export function Lightbox(p: LightboxProps) {
         </div>
         <div className="lb-group">
           <button type="button" aria-pressed={fav} onClick={() => void toggleFav()} title="お気に入りの切り替え (F)">
-            <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" className="lb-heart">
-              <path
-                fill={fav ? "currentColor" : "none"}
-                stroke="currentColor"
-                strokeWidth="1.4"
-                d="M8 14.2 2.1 8.4A3.7 3.7 0 0 1 7.3 3.1L8 3.8l.7-.7a3.7 3.7 0 0 1 5.2 5.3z"
-              />
-            </svg>
+            <span className="lb-star">
+              <StarIcon filled={fav} size={14} />
+            </span>
             お気に入り
           </button>
           <button type="button" onClick={() => run(() => revealPhoto(photo.id))} title="エクスプローラーでこのファイルを選択して表示">

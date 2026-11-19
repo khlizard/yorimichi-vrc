@@ -70,16 +70,18 @@
   flex: 1 1 0;
   min-width: 0;
 }
-.pp-memo textarea {
-  width: 100%;
-  resize: vertical;
-  font: inherit;
-}
-.pp-memo-actions {
+.pp-memo {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 3px;
+  gap: 8px;
+}
+.pp-memo input[type="text"] {
+  flex: 1 1 0;
+  min-width: 0;
+  font: inherit;
+}
+.pp .strip-head {
+  padding-bottom: 3px;
 }
 .pp-chips {
   display: flex;

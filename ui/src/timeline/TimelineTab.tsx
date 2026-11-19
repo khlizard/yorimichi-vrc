@@ -15,6 +15,7 @@ import {
   type TimelinePlayer,
   type TimelineVisit,
 } from "../libraryApi";
+import { StarIcon } from "../components/Star";
 import { useNav } from "../nav";
 import { Lightbox } from "../photos/Lightbox";
 import { Thumb } from "../photos/Thumb";
@@ -72,15 +73,6 @@ function counts(parts: [string, number][]): string {
     .filter(([, n]) => n > 0)
     .map(([l, n]) => `${l} ${nf(n)}`)
     .join(" · ");
-}
-
-function Star() {
-  return (
-    <svg className="tl-star" width="13" height="13" viewBox="0 0 24 24" role="img" aria-label="お気に入り">
-      <title>お気に入り</title>
-      <path fill="currentColor" d="M12 2l3.1 6.6 7.2.9-5.3 5 1.4 7.1L12 18l-6.4 3.6 1.4-7.1-5.3-5 7.2-.9z" />
-    </svg>
-  );
 }
 
 function Tile({ p, mini, onOpen }: { p: PhotoRow; mini?: boolean; onOpen: () => void }) {
@@ -353,7 +345,11 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
                     <button type="button" className="tl-link" onClick={() => nav.showVisit(s.visit.visitId)}>
                       {s.visit.worldName}
                     </button>
-                    {s.visit.worldFavorite && <Star />}
+                    {s.visit.worldFavorite && (
+                    <span className="tl-star" role="img" aria-label="お気に入り" title="お気に入り">
+                      <StarIcon filled size={13} />
+                    </span>
+                  )}
                     {s.visit.worldId && (
                       <button type="button" className="tl-small" onClick={() => openWorldPage(s.visit.worldId!).catch((e) => showError(errText(e)))}>
                         ワールドのページ

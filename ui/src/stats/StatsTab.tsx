@@ -17,12 +17,10 @@ const p2 = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`;
 const DAY_MS = 86400000;
 
-function level(seconds: number): number {
-  if (seconds <= 0) return 0;
-  if (seconds <= 3600) return 1;
-  if (seconds <= 7200) return 2;
-  if (seconds <= 14400) return 3;
-  return 4;
+function level(seconds: number, photos: number): number {
+  const t = seconds <= 0 ? 0 : seconds <= 3600 ? 1 : seconds <= 7200 ? 2 : seconds <= 14400 ? 3 : 4;
+  const p = photos <= 0 ? 0 : photos < 5 ? 1 : photos < 20 ? 2 : photos < 50 ? 3 : 4;
+  return Math.max(t, p);
 }
 
 export const StatsTab = forwardRef<TabHandle, Props>(function StatsTab({ active, from, to }, ref) {
@@ -124,7 +122,7 @@ export const StatsTab = forwardRef<TabHandle, Props>(function StatsTab({ active,
     if (!heat) return null;
     if (focusDay && focusDay >= heat.first && focusDay <= heat.last) return focusDay;
     let best: string | null = null;
-    for (const [d, a] of acts) if (a.seconds > 0 && (best == null || d > best)) best = d;
+    for (const [d, a] of acts) if ((a.seconds > 0 || a.photoCount > 0) && (best == null || d > best)) best = d;
     return best ?? heat.first;
   }, [heat, focusDay, acts]);
 
@@ -208,7 +206,7 @@ export const StatsTab = forwardRef<TabHandle, Props>(function StatsTab({ active,
       )}
       {heat && (
         <section aria-label="活動量">
-          <h3>日ごとのプレイ時間</h3>
+          <h3>日ごとの活動（プレイ時間と写真の枚数）</h3>
           <div className="st-heat-wrap">
             <div className="st-heat" ref={gridRef} role="group" aria-label={`${heatYear} 年の活動量`}>
               {heat.months.map((m) => (
@@ -224,13 +222,15 @@ export const StatsTab = forwardRef<TabHandle, Props>(function StatsTab({ active,
               {heat.cells.map((c) => {
                 const a = acts.get(c.day);
                 const sec = a?.seconds ?? 0;
-                const text = a && (a.seconds > 0 || a.photoCount > 0) ? `${c.day}: ${fmtDur(sec)}、写真 ${nf(a.photoCount)} 枚` : `${c.day}: 記録なし`;
+                const pc = a?.photoCount ?? 0;
+                const parts = [sec > 0 ? fmtDur(sec) : "", pc > 0 ? `写真 ${nf(pc)} 枚` : ""].filter((s) => s !== "");
+                const text = `${c.day}: ${parts.length > 0 ? parts.join("、") : "記録なし"}`;
                 return (
                   <button
                     key={c.day}
                     type="button"
                     data-day={c.day}
-                    className={`cell-btn l${level(sec)}`}
+                    className={`cell-btn l${level(sec, pc)}`}
                     title={text}
                     aria-label={text}
                     tabIndex={c.day === tabStop ? 0 : -1}
@@ -243,13 +243,16 @@ export const StatsTab = forwardRef<TabHandle, Props>(function StatsTab({ active,
               })}
             </div>
           </div>
-          <div className="st-legend" aria-hidden="true">
-            少
-            <i className="l0" />
-            <i className="l1" />
-            <i className="l2" />
-            <i className="l3" />
-            <i className="l4" />多
+          <div className="st-legend">
+            <span aria-hidden="true" className="st-legend-scale">
+              少
+              <i className="l0" />
+              <i className="l1" />
+              <i className="l2" />
+              <i className="l3" />
+              <i className="l4" />多
+            </span>
+            <span>濃さは、プレイ時間（1h / 2h / 4h）と写真の枚数（5 / 20 / 50 枚）の多い方で決まります。</span>
           </div>
         </section>
       )}

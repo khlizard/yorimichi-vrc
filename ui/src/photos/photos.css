@@ -7,6 +7,7 @@
   --line: #2c2e33;
   --line-soft: #24262b;
   --tile: #22242a;
+  --star: #e3b341;
   --button-bg: #2a2c32;
   --button-hover: #353840;
   --button-border: #4a4d55;
@@ -220,7 +221,6 @@
 .pg-fav {
   left: 4px;
   bottom: 4px;
-  color: #fff;
 }
 .pg-check {
   left: 4px;
@@ -283,8 +283,7 @@
   color: var(--muted);
   padding: 0 6px;
 }
-.lb-heart {
-  vertical-align: -2px;
+.lb-star {
   margin-right: 4px;
 }
 .lb-stage {
@@ -390,6 +389,23 @@ span.lb-name {
   border-radius: 0;
   background: var(--line-soft);
   overflow: hidden;
+}
+/* Clipped variant on the light detail panes: one row, cut off at the right edge. */
+.strip.clip {
+  padding: 0;
+  border-bottom: none;
+}
+.strip.clip .strip-head {
+  justify-content: space-between;
+  flex-wrap: nowrap;
+}
+.strip.clip .strip-row {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.strip.clip .strip-item {
+  background: #22242a;
 }
 .strip-item img {
   display: block;

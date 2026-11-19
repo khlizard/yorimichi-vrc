@@ -12,8 +12,13 @@ import {
   type TagCount,
 } from "../libraryApi";
 import { useNav } from "../nav";
+import { Lightbox } from "../photos/Lightbox";
+import { PhotoStrip, useRecentPhotos } from "../photos/PhotoStrip";
 import { TAG_COLORS, TagChip, TagDot } from "./tagUi";
 import "./players.css";
+
+/** Memos are one line; older multi-line memos are shown joined by a space. */
+const oneLine = (s: string) => s.replace(/\s*[\r\n]+\s*/g, " ");
 
 const dateOf = (t: string | null) => (t ? t.slice(0, 10) : "");
 
@@ -43,8 +48,10 @@ interface Props {
 export function PlayerProfilePanel({ profile, allTags, onChanged }: Props) {
   const { showError, choose, prompt } = useDialog();
   const nav = useNav();
-  const [memo, setMemo] = useState(profile.memo);
-  const [savedMemo, setSavedMemo] = useState(profile.memo);
+  const [memo, setMemo] = useState(() => oneLine(profile.memo));
+  const [savedMemo, setSavedMemo] = useState(() => oneLine(profile.memo));
+  const [lbIndex, setLbIndex] = useState<number | null>(null);
+  const [recent, setRecent] = useRecentPhotos({ playerId: profile.id });
   const [memoNote, setMemoNote] = useState(false);
   const [editing, setEditing] = useState(false);
   const [newName, setNewName] = useState("");
@@ -54,9 +61,10 @@ export function PlayerProfilePanel({ profile, allTags, onChanged }: Props) {
 
   // A different player replaces the drafts.
   useEffect(() => {
-    setMemo(profile.memo);
-    setSavedMemo(profile.memo);
+    setMemo(oneLine(profile.memo));
+    setSavedMemo(oneLine(profile.memo));
     setMemoNote(false);
+    setLbIndex(null);
     setEditing(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.id]);
@@ -138,15 +146,6 @@ export function PlayerProfilePanel({ profile, allTags, onChanged }: Props) {
         >
           VRChat のユーザーページ
         </button>
-        {profile.photoCount > 0 && (
-          <button
-            type="button"
-            title="この人が同じインスタンスにいた時間に撮った写真です（写っているとは限りません）"
-            onClick={() => nav.showPhotos({ playerId: profile.id, label: profile.displayName })}
-          >
-            この人と一緒にいたときの写真
-          </button>
-        )}
       </div>
       <div className="pp-facts">{factsLine(profile)}</div>
 
@@ -155,23 +154,27 @@ export function PlayerProfilePanel({ profile, allTags, onChanged }: Props) {
           メモ
         </label>
         <div className="pp-memo">
-          <textarea
+          <input
             id="pp-memo"
-            rows={3}
+            type="text"
             value={memo}
             onChange={(e) => {
               setMemo(e.target.value);
               setMemoNote(false);
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                if (memo !== savedMemo && !busy) void saveMemo();
+              }
+            }}
           />
-          <div className="pp-memo-actions">
-            <button type="button" disabled={memo === savedMemo || busy} onClick={() => void saveMemo()}>
-              保存
-            </button>
-            <span className="save-status" role="status">
-              {memoNote && memo === savedMemo ? "保存しました" : ""}
-            </span>
-          </div>
+          <button type="button" disabled={memo === savedMemo || busy} onClick={() => void saveMemo()}>
+            保存
+          </button>
+          <span className="save-status" role="status">
+            {memoNote && memo === savedMemo ? "保存しました" : ""}
+          </span>
         </div>
       </div>
 
@@ -264,6 +267,36 @@ export function PlayerProfilePanel({ profile, allTags, onChanged }: Props) {
           )}
         </div>
       </div>
+      {recent.length > 0 && (
+        <PhotoStrip
+          clip
+          title="一緒にいたときの写真"
+          photos={recent}
+          onOpen={setLbIndex}
+          actions={
+            <button type="button" onClick={() => nav.showPhotos({ playerId: profile.id, label: profile.displayName })}>
+              すべて見る ({profile.photoCount.toLocaleString("ja-JP")})
+            </button>
+          }
+        />
+      )}
+      {lbIndex !== null && (
+        <Lightbox
+          items={recent}
+          index={lbIndex}
+          onIndexChange={setLbIndex}
+          onClose={() => setLbIndex(null)}
+          onNavigateVisit={(id) => {
+            setLbIndex(null);
+            nav.showVisit(id);
+          }}
+          onNavigatePlayer={(id, name) => {
+            setLbIndex(null);
+            nav.showPlayer(id, name);
+          }}
+          onFavoriteChanged={(id, fav) => setRecent((l) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
+        />
+      )}
     </section>
   );
 }

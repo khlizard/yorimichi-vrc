@@ -2,8 +2,14 @@
   overflow: auto;
   padding: 10px 14px 24px;
 }
+.wd-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .wd-title {
   margin: 0;
+  min-width: 0;
   font-size: 16px;
   font-weight: bold;
   overflow-wrap: anywhere;
@@ -29,12 +35,22 @@
 .wd-stats dd {
   margin: 0;
 }
-.wd textarea {
-  display: block;
-  width: 100%;
-  min-height: 110px;
+.wd-memo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 6px;
-  resize: vertical;
+}
+.wd-memo input[type="text"] {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.wd-photos {
+  margin-top: 12px;
+}
+.wd-photos .strip-head {
+  margin: 0 0 3px;
+  padding: 0;
 }
 .wd h3 {
   margin: 18px 0 4px;
@@ -45,7 +61,7 @@
   color: var(--ok);
 }
 .wd-star {
-  display: inline-block;
+  display: inline-flex;
   vertical-align: -2px;
   margin-left: 4px;
 }
