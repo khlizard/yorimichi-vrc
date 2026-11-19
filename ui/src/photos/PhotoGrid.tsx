@@ -1,8 +1,9 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
-import { thumbUrl, type PhotoRow } from "../api";
+import { type PhotoRow } from "../api";
 import { useLatest } from "../components/hooks";
 import { dayLabel, logicalDay, photoLabel } from "./photoUtil";
+import { Thumb } from "./Thumb";
 import "./photos.css";
 
 export type GridSize = "s" | "m" | "l";
@@ -137,7 +138,6 @@ interface TileProps {
 }
 
 const PhotoTile = memo(function PhotoTile({ p, index, w, h, selected, selectable, onClick }: TileProps) {
-  const [bad, setBad] = useState(false);
   return (
     <button
       type="button"
@@ -149,11 +149,7 @@ const PhotoTile = memo(function PhotoTile({ p, index, w, h, selected, selectable
       aria-pressed={selectable ? selected : undefined}
       onClick={(e) => onClick(index, e.shiftKey)}
     >
-      {bad ? (
-        <span className="pg-missing">{p.onlineOnly ? "未ダウンロード" : "表示できません"}</span>
-      ) : (
-        <img loading="lazy" decoding="async" src={thumbUrl(p.id)} alt="" draggable={false} onError={() => setBad(true)} />
-      )}
+      <Thumb photo={p} />
       {selectable && (
         <span className={`pg-check${selected ? " on" : ""}`} aria-hidden="true">
           {selected && <Check />}

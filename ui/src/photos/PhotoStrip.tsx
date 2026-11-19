@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { onPhotosChanged, photosForVisit, thumbUrl, type PhotoRow } from "../api";
+import { onPhotosChanged, photosForVisit, type PhotoRow } from "../api";
 import { useLatest } from "../components/hooks";
 import { photoLabel } from "./photoUtil";
+import { Thumb } from "./Thumb";
 import "./photos.css";
 
 /** Photos of one visit (null = none selected). Reloads when the photo library changes. */
@@ -62,7 +63,7 @@ export function PhotoStrip({
             style={{ aspectRatio: p.width && p.height ? `${p.width} / ${p.height}` : "16 / 9" }}
             onClick={() => onOpen(i)}
           >
-            <img loading="lazy" decoding="async" src={thumbUrl(p.id)} alt="" draggable={false} />
+            <Thumb photo={p} />
           </button>
         ))}
       </div>

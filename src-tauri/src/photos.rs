@@ -1,6 +1,7 @@
 //! Photo support in the shell: scan orchestration, thumbnail cache and the `vrcphoto` URI scheme.
 //!
-//! Photo files are only ever read. Online-only (cloud placeholder) files are never opened.
+//! Photo files are only ever read. Online-only (cloud placeholder) files are never opened;
+//! their thumbnails come from the shell thumbnail pipeline (see `shell_thumb`).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -14,6 +15,7 @@ use vrclogger_core::data::photo_query::PhotoService;
 use vrclogger_core::photos::{is_online_only, make_thumbnail, relink_visits, scan_folders};
 
 use crate::app::{set_status, AppState};
+use crate::shell_thumb::shell_thumbnail_jpeg;
 
 pub const SCAN_INTERVAL: Duration = Duration::from_secs(300);
 const THUMB_EDGE: u32 = 400;
@@ -118,6 +120,50 @@ impl PhotoFile {
             && !self.online_only
             && std::fs::metadata(&self.path).is_ok_and(|md| md.is_file() && !is_online_only(&md))
     }
+}
+
+impl PhotoFile {
+    /// Not missing and online-only, per the DB flag or the current attributes.
+    fn online_only_now(&self) -> bool {
+        if self.missing {
+            return false;
+        }
+        match std::fs::metadata(&self.path) {
+            Ok(md) => md.is_file() && (self.online_only || is_online_only(&md)),
+            Err(_) => false,
+        }
+    }
+}
+
+/// Gets a thumbnail for an online-only file from the shell and caches it (blocking; caller holds the gate).
+/// If the call made the file local (hydrated it), the shell path is disabled for the session.
+fn ensure_shell_thumb(app: &AppHandle, file: &PhotoFile, cache: &Path) -> Option<Vec<u8>> {
+    let st = app.state::<AppState>();
+    if st.shell_thumb_disabled.load(Ordering::SeqCst) {
+        return None;
+    }
+    let key = file.key();
+    if st.thumb_failed.lock().unwrap().contains(&key) {
+        return None;
+    }
+    let bytes = shell_thumbnail_jpeg(Path::new(&file.path), THUMB_EDGE);
+    let still_online_only = std::fs::metadata(&file.path).is_ok_and(|md| is_online_only(&md));
+    if !still_online_only {
+        st.shell_thumb_disabled.store(true, Ordering::SeqCst);
+        set_status(app, "オンライン専用の写真のサムネイル取得を停止しました (ファイルのダウンロードが発生したため)");
+    }
+    let Some(bytes) = bytes else {
+        st.thumb_failed.lock().unwrap().insert(key);
+        return None;
+    };
+    if let Some(dir) = cache.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let tmp = cache.with_extension("jpg.tmp");
+    if std::fs::write(&tmp, &bytes).is_ok() && std::fs::rename(&tmp, cache).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    Some(bytes)
 }
 
 pub fn photo_file(conn: &Connection, id: i64) -> rusqlite::Result<Option<PhotoFile>> {
@@ -298,10 +344,18 @@ pub async fn handle_request(app: AppHandle, request: Request<Vec<u8>>) -> Respon
                 if let Ok(b) = std::fs::read(&cache) {
                     return Some(b);
                 }
+                let st = app2.state::<AppState>();
+                if file.online_only_now() {
+                    let _permit = tauri::async_runtime::block_on(st.thumb_gate.acquire()).ok()?;
+                    // Another request may have filled the cache while waiting.
+                    if let Ok(b) = std::fs::read(&cache) {
+                        return Some(b);
+                    }
+                    return ensure_shell_thumb(&app2, &file, &cache);
+                }
                 if !file.servable() {
                     return None;
                 }
-                let st = app2.state::<AppState>();
                 let _permit = tauri::async_runtime::block_on(st.thumb_gate.acquire()).ok()?;
                 let path = ensure_thumb(&app2, &file)?;
                 std::fs::read(path).ok()

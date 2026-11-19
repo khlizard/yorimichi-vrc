@@ -65,14 +65,20 @@
 
 /* ---- On this day ---- */
 .tl-memories {
-  margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.tl-memories-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
 }
 .tl-mem {
   margin-bottom: 12px;
 }
-.tl-mem h3 {
+.tl-mem h4 {
   margin: 0 0 4px;
   font-size: 13px;
   font-weight: 600;

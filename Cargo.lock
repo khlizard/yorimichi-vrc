@@ -4879,6 +4879,7 @@ dependencies = [
  "arboard",
  "chrono",
  "dirs 6.0.0",
+ "image",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4892,6 +4893,7 @@ dependencies = [
  "tokio",
  "velopack",
  "vrclogger-core",
+ "windows",
  "windows-sys 0.61.2",
 ]
 

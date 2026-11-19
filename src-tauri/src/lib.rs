@@ -5,6 +5,7 @@ mod library_commands;
 mod maintenance;
 mod photos;
 mod settings;
+pub mod shell_thumb;
 mod update;
 
 use std::sync::atomic::Ordering;

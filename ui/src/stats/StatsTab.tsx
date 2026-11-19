@@ -111,7 +111,12 @@ export const StatsTab = forwardRef<TabHandle, Props>(function StatsTab({ active,
       cells.push({ day: ymd(d), col, row: d.getUTCDay() });
       if (d.getUTCDate() === 1) months.push({ col, label: `${d.getUTCMonth() + 1}月` });
     }
-    return { cells, months, first: ymd(new Date(start)), last: ymd(new Date(start + (total - 1) * DAY_MS)) };
+    // Days after today are not rendered at all (no cell, not focusable).
+    const n = new Date();
+    const today = `${n.getFullYear()}-${p2(n.getMonth() + 1)}-${p2(n.getDate())}`;
+    const shown = cells.filter((c) => c.day <= today);
+    if (shown.length === 0) return { cells: shown, months: [], first: ymd(new Date(start)), last: ymd(new Date(start)) };
+    return { cells: shown, months: months.filter((m) => m.col <= shown[shown.length - 1].col), first: shown[0].day, last: shown[shown.length - 1].day };
   }, [heatYear]);
 
   // Roving tab stop: the newest active day of the year, else Jan 1.

@@ -235,7 +235,7 @@ export function Lightbox(p: LightboxProps) {
         </div>
       </div>
       <div className="lb-stage">
-        {!loaded && !failed && thumbBadId !== id && (
+        {!loaded && thumbBadId !== id && (
           <img key={`t${id}`} className="lb-img" src={thumbUrl(id)} alt="" draggable={false} onError={() => setThumbBadId(id)} />
         )}
         <img
@@ -247,10 +247,17 @@ export function Lightbox(p: LightboxProps) {
           onLoad={() => setLoadedId(id)}
           onError={() => setBadId(id)}
         />
-        {failed && <div className="lb-msg">{photo.onlineOnly ? "未ダウンロード" : "表示できません"}</div>}
+        {failed && thumbBadId === id && <div className="lb-msg">{photo.onlineOnly ? "未ダウンロード" : "表示できません"}</div>}
       </div>
       {showInfo && (
         <div className="lb-info">
+          {failed && (
+            <div className="lb-note" role="status">
+              {photo.onlineOnly
+                ? "オンライン専用のファイルのため、縮小した画像を表示しています。「既定のアプリで開く」でダウンロードして開けます。"
+                : "画像を読み込めませんでした。"}
+            </div>
+          )}
           <div className="lb-line">
             <span className="lb-time">{time}</span>
             {visitId != null ? (

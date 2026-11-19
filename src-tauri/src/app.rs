@@ -39,6 +39,8 @@ pub struct AppState {
     /// Thumbnail keys that failed to generate this session (not retried).
     pub thumb_failed: Mutex<HashSet<String>>,
     pub thumb_generation: AtomicU64,
+    /// Set when a shell thumbnail request hydrated an online-only file; disables that path for the session.
+    pub shell_thumb_disabled: AtomicBool,
 }
 
 impl AppState {
@@ -56,6 +58,7 @@ impl AppState {
             thumb_gate: tokio::sync::Semaphore::new(3),
             thumb_failed: Mutex::new(HashSet::new()),
             thumb_generation: AtomicU64::new(0),
+            shell_thumb_disabled: AtomicBool::new(false),
         }
     }
 }

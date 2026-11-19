@@ -27,6 +27,20 @@
   background: var(--button-bg);
   border-color: var(--button-border);
 }
+/* Dark form fields (#e8e8ea on #22242a is about 12:1); color-scheme makes the native picker dark. */
+.photo-surface input[type="text"],
+.photo-surface input[type="number"],
+.photo-surface input[type="date"],
+.photo-surface select {
+  background: var(--tile);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  color-scheme: dark;
+}
+.photo-surface input::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+  cursor: pointer;
+}
 .photo-surface button[aria-pressed="true"]:not(.pg-tile) {
   background: var(--focus);
   border-color: var(--focus);
@@ -165,7 +179,22 @@
   outline: 3px solid var(--focus);
   outline-offset: -3px;
 }
-.pg-missing {
+.thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--tile, #22242a);
+}
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 0;
+}
+.thumb-missing {
   position: absolute;
   inset: 0;
   display: flex;
@@ -174,7 +203,8 @@
   padding: 4px;
   text-align: center;
   font-size: 11px;
-  color: var(--muted);
+  line-height: 1.3;
+  color: #a3a5ab;
 }
 .pg-fav,
 .pg-check {
@@ -216,8 +246,10 @@
   display: flex;
   flex-direction: column;
   background: #0e0f11;
-  outline: none;
   animation: lb-fade 120ms linear;
+}
+.lb:focus:not(:focus-visible) {
+  outline: none;
 }
 @keyframes lb-fade {
   from {
@@ -269,6 +301,9 @@
 }
 .lb-hidden {
   opacity: 0;
+}
+.lb-note {
+  color: var(--muted);
 }
 .lb-msg {
   position: absolute;

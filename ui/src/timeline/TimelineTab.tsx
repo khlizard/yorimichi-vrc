@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { thumbUrl, type PhotoRow } from "../api";
+import { type PhotoRow } from "../api";
 import { useDialog } from "../components/Dialog";
 import { useLatest } from "../components/hooks";
 import { errText, type TabHandle } from "../components/util";
@@ -17,6 +17,7 @@ import {
 } from "../libraryApi";
 import { useNav } from "../nav";
 import { Lightbox } from "../photos/Lightbox";
+import { Thumb } from "../photos/Thumb";
 import { dayLabel, logicalDay, photoLabel } from "../photos/photoUtil";
 import "../photos/photos.css";
 import { fmtDur, nf } from "./format";
@@ -65,6 +66,14 @@ function buildStops(data: TimelineDay): Stop[] {
   return stops;
 }
 
+/** "label n" parts joined by " · ", skipping zeros. */
+function counts(parts: [string, number][]): string {
+  return parts
+    .filter(([, n]) => n > 0)
+    .map(([l, n]) => `${l} ${nf(n)}`)
+    .join(" · ");
+}
+
 function Star() {
   return (
     <svg className="tl-star" width="13" height="13" viewBox="0 0 24 24" role="img" aria-label="お気に入り">
@@ -84,7 +93,7 @@ function Tile({ p, mini, onOpen }: { p: PhotoRow; mini?: boolean; onOpen: () => 
       style={{ aspectRatio: aspect(p) }}
       onClick={onOpen}
     >
-      <img loading="lazy" decoding="async" src={thumbUrl(p.id)} alt="" draggable={false} />
+      <Thumb photo={p} />
     </button>
   );
 }
@@ -317,40 +326,21 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
           <h2 className="tl-title">{dayLabel(day)}</h2>
           {data && (
             <div className="tl-summary">
-              プレイ {fmtDur(data.totalSeconds)} · ワールド {nf(data.visitCount)} · 会った人 {nf(data.peopleCount)} · 写真{" "}
-              {nf(data.photoCount)}
+              {[
+                data.totalSeconds > 0 ? `プレイ ${fmtDur(data.totalSeconds)}` : "",
+                counts([
+                  ["ワールド", data.visitCount],
+                  ["会った人", data.peopleCount],
+                  ["写真", data.photoCount],
+                ]),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </div>
           )}
         </div>
       )}
       <div className="tl-body" ref={bodyRef}>
-        {memories.length > 0 && (
-          <section className="tl-memories" aria-label="過去の同じ日">
-            {memories.map((m) => (
-              <div className="tl-mem" key={m.day}>
-                <h3>
-                  {nf(thisYear - m.year)} 年前の今日 ({m.day})
-                </h3>
-                {m.photos.length > 0 && (
-                  <div className="tl-mem-thumbs" role="group" aria-label={`${m.day} の写真`}>
-                    {m.photos.slice(0, MEMORY_THUMBS).map((p, i) => (
-                      <Tile key={p.id} p={p} mini onOpen={() => setLb({ items: m.photos, index: i })} />
-                    ))}
-                  </div>
-                )}
-                <div className="tl-mem-line">
-                  <span>
-                    ワールド {nf(m.visitCount)} · 会った人 {nf(m.peopleCount)} · 写真 {nf(m.photoCount)}
-                    {m.worlds.length > 0 && ` — ${m.worlds.join("、")}`}
-                  </span>
-                  <button type="button" className="tl-small" onClick={() => nav.showDay(m.day)}>
-                    この日を開く
-                  </button>
-                </div>
-              </div>
-            ))}
-          </section>
-        )}
         {empty && <p className="tl-empty">この日の記録はありません。</p>}
         {stops.length > 0 && (
           <ol className="tl-rail" aria-label="この日の流れ">
@@ -400,6 +390,39 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
               ),
             )}
           </ol>
+        )}
+        {memories.length > 0 && (
+          <section className="tl-memories" aria-label="過去の同じ日">
+            <h3 className="tl-memories-title">過去の同じ日</h3>
+            {memories.map((m) => {
+              const line = counts([
+                ["ワールド", m.visitCount],
+                ["会った人", m.peopleCount],
+                ["写真", m.photoCount],
+              ]);
+              const worlds = m.worlds.length > 0 ? m.worlds.join("、") : "";
+              return (
+                <div className="tl-mem" key={m.day}>
+                  <h4>
+                    {nf(thisYear - m.year)} 年前の今日 ({m.day})
+                  </h4>
+                  {m.photos.length > 0 && (
+                    <div className="tl-mem-thumbs" role="group" aria-label={`${m.day} の写真`}>
+                      {m.photos.slice(0, MEMORY_THUMBS).map((p, i) => (
+                        <Tile key={p.id} p={p} mini onOpen={() => setLb({ items: m.photos, index: i })} />
+                      ))}
+                    </div>
+                  )}
+                  <div className="tl-mem-line">
+                    {(line || worlds) && <span>{[line, worlds].filter(Boolean).join(" — ")}</span>}
+                    <button type="button" className="tl-small" onClick={() => nav.showDay(m.day)}>
+                      この日を開く
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </section>
         )}
       </div>
       {lb && (

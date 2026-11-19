@@ -1,11 +1,12 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
-import { onPhotosChanged, thumbUrl, type PhotoRow } from "../api";
+import { onPhotosChanged, type PhotoRow } from "../api";
 import { useDialog } from "../components/Dialog";
 import { useLatest } from "../components/hooks";
 import { errText, type TabHandle } from "../components/util";
 import { useNav } from "../nav";
 import { Lightbox } from "../photos/Lightbox";
 import { PhotoGrid } from "../photos/PhotoGrid";
+import { Thumb } from "../photos/Thumb";
 import {
   albumPhotos,
   albumRemovePhotos,
@@ -40,11 +41,9 @@ function rangeText(a: AlbumRow): string {
 }
 
 function Cover({ id }: { id: number | null }) {
-  const [bad, setBad] = useState(false);
-  useEffect(() => setBad(false), [id]);
   return (
     <span className="al-cover" aria-hidden="true">
-      {id !== null && !bad && <img src={thumbUrl(id)} alt="" draggable={false} loading="lazy" onError={() => setBad(true)} />}
+      {id !== null && <Thumb photo={{ id, onlineOnly: false }} />}
     </span>
   );
 }
