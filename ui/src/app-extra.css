@@ -1,0 +1,10 @@
+/* 11 tabs: wrap to extra rows at narrow widths instead of overflowing. */
+.tabstrip {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.tabstrip .tab {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  white-space: nowrap;
+}

@@ -20,21 +20,31 @@ import { DialogProvider, useDialog } from "./components/Dialog";
 import { errText, type TabHandle } from "./components/util";
 import { AvatarsTab } from "./tabs/AvatarsTab";
 import { LogsTab } from "./tabs/LogsTab";
+import "./app-extra.css";
+import { AppNavContext, type AppNav } from "./nav";
+import { AlbumsTab, type AlbumsHandle } from "./albums/AlbumsTab";
 import { PhotoNavContext, type PhotoFilter } from "./photos/nav";
 import { PhotosTab, type PhotosHandle } from "./photos/PhotosTab";
 import { NotificationsTab } from "./tabs/NotificationsTab";
 import { PlayersTab, type PlayersHandle } from "./tabs/PlayersTab";
 import { SessionsTab, type SessionsHandle } from "./tabs/SessionsTab";
 import { UrlsTab } from "./tabs/UrlsTab";
+import { StatsTab } from "./stats/StatsTab";
+import { TimelineTab, type TimelineHandle } from "./timeline/TimelineTab";
+import { WorldsTab, type WorldsHandle } from "./worlds/WorldsTab";
 
 const TABS = [
+  { id: "timeline", label: "タイムライン" },
   { id: "photos", label: "写真" },
+  { id: "albums", label: "アルバム" },
   { id: "players", label: "プレイヤー" },
   { id: "sessions", label: "セッション" },
+  { id: "worlds", label: "ワールド" },
   { id: "urls", label: "URL" },
   { id: "avatars", label: "アバター" },
   { id: "notifications", label: "通知" },
   { id: "logs", label: "生ログ" },
+  { id: "stats", label: "統計" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -50,7 +60,7 @@ export default function App() {
 
 function Main() {
   const { showError, choose } = useDialog();
-  const [tab, setTab] = useState<TabId>("players");
+  const [tab, setTab] = useState<TabId>("timeline");
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [status, setStatus] = useState("");
@@ -62,6 +72,10 @@ function Main() {
   chooseRef.current = choose;
 
   // Imperative handles of every refreshable tab. Refresh is explicit: App calls handle.refresh().
+  const timeline = useRef<TimelineHandle>(null);
+  const albums = useRef<AlbumsHandle>(null);
+  const worlds = useRef<WorldsHandle>(null);
+  const stats = useRef<TabHandle>(null);
   const photos = useRef<PhotosHandle>(null);
   const players = useRef<PlayersHandle>(null);
   const sessions = useRef<SessionsHandle>(null);
@@ -74,7 +88,7 @@ function Main() {
 
   const refreshAll = () => {
     pending.current = false;
-    for (const h of [photos, players, sessions, urls, avatars, notifications, logs]) h.current?.refresh();
+    for (const h of [timeline, photos, albums, players, sessions, worlds, urls, avatars, notifications, logs, stats]) h.current?.refresh();
   };
   const refreshAllRef = useRef(refreshAll);
   refreshAllRef.current = refreshAll;
@@ -156,6 +170,10 @@ function Main() {
         if (changed && !automatic) {
           refreshAllRef.current();
         } else if (changed && automatic) {
+          timeline.current?.refresh();
+          albums.current?.refresh();
+          worlds.current?.refresh();
+          stats.current?.refresh();
           sessions.current?.refresh();
           urls.current?.refresh();
           avatars.current?.refresh();
@@ -196,10 +214,42 @@ function Main() {
   // Stable context value so tabs using it do not re-render on every App render.
   const photoNav = useMemo(() => ({ showPhotos: (f: PhotoFilter) => navigateToPhotosRef.current(f) }), []);
 
+  const appNavRef = useRef<AppNav>(null as unknown as AppNav);
+  appNavRef.current = {
+    showPhotos: navigateToPhotos,
+    showVisit: navigateToVisit,
+    showPlayer: navigateToPlayer,
+    showDay: (day) => {
+      flushSync(() => setTab("timeline"));
+      timeline.current?.showDay(day);
+    },
+    showWorld: (id) => {
+      flushSync(() => setTab("worlds"));
+      worlds.current?.selectWorld(id);
+    },
+    showAlbum: (id) => {
+      flushSync(() => setTab("albums"));
+      albums.current?.selectAlbum(id);
+    },
+  };
+  const appNav = useMemo<AppNav>(
+    () => ({
+      showPhotos: (f) => appNavRef.current.showPhotos(f),
+      showVisit: (id) => appNavRef.current.showVisit(id),
+      showPlayer: (id, n) => appNavRef.current.showPlayer(id, n),
+      showDay: (d) => appNavRef.current.showDay(d),
+      showWorld: (id) => appNavRef.current.showWorld(id),
+      showAlbum: (id) => appNavRef.current.showAlbum(id),
+    }),
+    [],
+  );
+
   const onTabKey = (e: React.KeyboardEvent, i: number) => {
     let n = i;
     if (e.key === "ArrowRight") n = (i + 1) % TABS.length;
     else if (e.key === "ArrowLeft") n = (i + TABS.length - 1) % TABS.length;
+    else if (e.key === "Home") n = 0;
+    else if (e.key === "End") n = TABS.length - 1;
     else return;
     e.preventDefault();
     setTab(TABS[n].id);
@@ -219,6 +269,7 @@ function Main() {
   );
 
   return (
+    <AppNavContext.Provider value={appNav}>
     <PhotoNavContext.Provider value={photoNav}>
     <div className="app">
       <div className="toolbar">
@@ -261,6 +312,7 @@ function Main() {
         ))}
       </div>
       <div className="tabbody">
+        {panel("timeline", <TimelineTab ref={timeline} active={tab === "timeline"} dayStartHour={settings?.DayStartHour ?? 0} />)}
         {panel(
           "photos",
           <PhotosTab
@@ -274,14 +326,18 @@ function Main() {
             onNavigatePlayer={navigateToPlayer}
           />,
         )}
+        {panel("albums", <AlbumsTab ref={albums} active={tab === "albums"} dayStartHour={settings?.DayStartHour ?? 0} />)}
         {panel("players", <PlayersTab ref={players} from={from} to={to} onNavigate={navigateToVisit} />)}
         {panel("sessions", <SessionsTab ref={sessions} from={from} to={to} onNavigatePlayer={navigateToPlayer} />)}
+        {panel("worlds", <WorldsTab ref={worlds} active={tab === "worlds"} />)}
         {panel("urls", <UrlsTab ref={urls} from={from} to={to} onNavigate={navigateToVisit} />)}
         {panel("avatars", <AvatarsTab ref={avatars} from={from} to={to} onNavigate={navigateToVisit} />)}
         {panel("notifications", <NotificationsTab ref={notifications} from={from} to={to} onNavigate={navigateToVisit} />)}
         {panel("logs", <LogsTab ref={logs} from={from} to={to} onNavigate={navigateToVisit} />)}
+        {panel("stats", <StatsTab ref={stats} active={tab === "stats"} from={from} to={to} />)}
       </div>
     </div>
     </PhotoNavContext.Provider>
+    </AppNavContext.Provider>
   );
 }

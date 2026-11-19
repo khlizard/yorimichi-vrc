@@ -1,0 +1,228 @@
+/* Timeline: vertical time rail (the app's one signature). Dark tokens come from .photo-surface. */
+.tl {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.tl-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.tl-head .tl-spacer {
+  flex: 1 1 0;
+}
+.tl-title-row {
+  flex: 0 0 auto;
+  padding: 8px 16px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.tl-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.tl-summary {
+  margin-top: 2px;
+  color: var(--muted);
+}
+.tl-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 48px;
+}
+.tl .tl-empty {
+  color: var(--muted);
+  margin: 24px 0;
+}
+
+.tl-link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  min-height: 0;
+  text-align: left;
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: var(--button-border);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.photo-surface .tl-link:hover:not(:disabled) {
+  background: transparent;
+  text-decoration-color: var(--fg);
+}
+.tl-small {
+  min-height: 20px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+/* ---- On this day ---- */
+.tl-memories {
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.tl-mem {
+  margin-bottom: 12px;
+}
+.tl-mem h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tl-mem-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.tl-mem-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+/* ---- Rail ---- */
+.tl-rail {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tl-rail::before {
+  content: "";
+  position: absolute;
+  left: 66px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.tl-stop {
+  position: relative;
+  padding: 0 0 22px 90px;
+  min-height: 24px;
+}
+.tl-time {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 56px;
+  text-align: right;
+  line-height: 20px;
+  font-size: 14px;
+}
+.tl-mark {
+  position: absolute;
+  left: 62px;
+  top: 6px;
+  width: 9px;
+  height: 9px;
+  background: var(--fg);
+}
+.tl-stop.loose .tl-mark {
+  background: var(--bg);
+  border: 1px solid var(--muted);
+}
+.tl-world {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  line-height: 20px;
+}
+.tl-world .tl-link {
+  font-size: 15px;
+  font-weight: 600;
+}
+.tl-star {
+  flex: 0 0 auto;
+  display: block;
+}
+.tl-meta {
+  color: var(--muted);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.tl-people {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 8px;
+}
+.tl-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.tl-person > button {
+  background: transparent;
+  border: 1px solid var(--line);
+  min-height: 22px;
+  padding: 0 6px;
+}
+.photo-surface .tl-person > button:hover:not(:disabled) {
+  background: var(--button-hover);
+}
+.tl-chip {
+  border: 1px solid var(--button-border);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+.tl-memo-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--fg);
+}
+.tl-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 10px;
+}
+.photo-surface .tl-tile {
+  flex: 0 0 auto;
+  display: block;
+  height: 150px;
+  max-width: 100%;
+  padding: 0;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  background: var(--tile);
+  overflow: hidden;
+}
+.photo-surface .tl-tile.mini {
+  height: 72px;
+}
+.photo-surface .tl-tile:hover:not(:disabled) {
+  background: var(--tile);
+}
+.tl-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.tl-tile:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.tl-more {
+  margin-top: 6px;
+}

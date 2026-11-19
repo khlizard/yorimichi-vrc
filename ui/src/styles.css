@@ -350,6 +350,12 @@ a.link {
   font-size: 16px;
   font-weight: bold;
 }
+.visit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 6px;
+}
 .check {
   display: flex;
   align-items: center;
@@ -418,6 +424,49 @@ a.link {
 }
 .modal-footer button {
   min-width: 72px;
+}
+.prompt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 360px;
+}
+.prompt-body input,
+.prompt-body textarea {
+  width: 100%;
+  font: inherit;
+}
+.pick-body {
+  padding: 8px;
+}
+.pick-empty {
+  padding: 4px 4px 8px;
+}
+.pick-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--button-border);
+}
+.pick-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 10px;
+  cursor: default;
+}
+.pick-item.extra {
+  border-top: 1px solid var(--line);
+}
+.pick-item.active {
+  background: var(--select-bg);
+  color: var(--select-fg);
+}
+.pick-list:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.pick-item.active .hint {
+  color: var(--select-fg);
 }
 
 /* ---- Settings ---- */

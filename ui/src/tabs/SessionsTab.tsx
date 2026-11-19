@@ -1,5 +1,15 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
-import { visitPlayers, visitUrls, visits as fetchVisits, type UrlHit, type VisitPlayerRow, type VisitRow } from "../api";
+import {
+  getSettings,
+  onSettingsChanged,
+  visitPlayers,
+  visitUrls,
+  visits as fetchVisits,
+  type UrlHit,
+  type VisitPlayerRow,
+  type VisitRow,
+} from "../api";
+import { describeAdd, useAddToAlbum } from "../albums/addToAlbum";
 import { DataGrid, type Column } from "../components/DataGrid";
 import { useDialog } from "../components/Dialog";
 import { Splitter } from "../components/Splitter";
@@ -7,7 +17,17 @@ import { UrlGrid } from "../components/UrlGrid";
 import { VirtualList, type ListHandle } from "../components/VirtualList";
 import { useLatest } from "../components/hooks";
 import { errText, fmtMb, nullIfBlank, type TabHandle } from "../components/util";
+import {
+  createAlbumFromVisit,
+  openInstance,
+  openUserPage,
+  openWorldPage,
+  visitPlayerBadges,
+  type PlayerBadge,
+} from "../libraryApi";
+import { useNav } from "../nav";
 import { Lightbox } from "../photos/Lightbox";
+import { logicalDay } from "../photos/photoUtil";
 import { PhotoStrip, useVisitPhotos } from "../photos/PhotoStrip";
 
 export interface SessionsHandle extends TabHandle {
@@ -15,14 +35,34 @@ export interface SessionsHandle extends TabHandle {
   selectVisitById(id: number): Promise<void>;
 }
 
-const playerColumns: Column<VisitPlayerRow>[] = [
+function badgeTexts(b: PlayerBadge | undefined): string[] {
+  if (!b) return [];
+  const out: string[] = [];
+  if (b.firstMet) out.push("初対面");
+  if (b.daysSinceLast != null) out.push(`${b.daysSinceLast} 日ぶり`);
+  return out;
+}
+
+function playerColumns(badges: Map<number, PlayerBadge>): Column<VisitPlayerRow>[] {
+  return [
   { header: "名前", width: 200, text: (r) => r.displayName },
+  {
+    header: "バッジ",
+    width: 130,
+    text: (r) => badgeTexts(badges.get(r.playerId)).join(" "),
+    render: (r) => badgeTexts(badges.get(r.playerId)).map((t) => (
+      <span key={t} className="badge">
+        {t}
+      </span>
+    )),
+  },
   { header: "アバター", flex: 1, text: (r) => r.avatarName ?? "" },
   { header: "MB", width: 55, text: (r) => fmtMb(r.avatarSizeMb) },
   { header: "Join", width: 140, text: (r) => r.joinTime },
   { header: "Leave", width: 140, text: (r) => r.leaveTime },
   { header: "滞在", width: 80, text: (r) => r.duration },
-];
+  ];
+}
 
 export function SessionsTab({
   from,
@@ -35,8 +75,13 @@ export function SessionsTab({
   onNavigatePlayer?: (playerId: number, displayName: string) => void;
   ref?: Ref<SessionsHandle>;
 }) {
-  const { showError } = useDialog();
+  const { showError, prompt } = useDialog();
+  const nav = useNav();
+  const addToAlbum = useAddToAlbum();
   const range = useLatest({ from, to });
+  const [dayStart, setDayStart] = useState(0);
+  const [badges, setBadges] = useState<Map<number, PlayerBadge>>(() => new Map());
+  const [addNote, setAddNote] = useState<{ text: string; albumId: number } | null>(null);
   const [leftWidth, setLeftWidth] = useState(380);
   const [urlHeight, setUrlHeight] = useState(200);
   const [worldText, setWorldText] = useState("");
@@ -59,24 +104,47 @@ export function SessionsTab({
   // A different visit invalidates the open photo view.
   useEffect(() => {
     setLbIndex(null);
+    setAddNote(null);
   }, [selectedId]);
+
+  // The logical-day boundary comes from the settings.
+  useEffect(() => {
+    let alive = true;
+    getSettings().then(
+      (s) => alive && setDayStart(s.DayStartHour),
+      () => {},
+    );
+    const un = onSettingsChanged((s) => setDayStart(s.DayStartHour));
+    return () => {
+      alive = false;
+      un.then((f) => f()).catch(() => {});
+    };
+  }, []);
 
   const loadDetails = async (id: number | null) => {
     const g = ++detailGen.current;
     if (id == null) {
       setPlayers([]);
       setUrls([]);
+      setBadges(new Map());
       return;
     }
     try {
-      const [p, u] = await Promise.all([visitPlayers(id), visitUrls(id)]);
+      const [p, u, b] = await Promise.all([
+        visitPlayers(id),
+        visitUrls(id),
+        // Badges are decoration: a failure leaves the column empty.
+        visitPlayerBadges(id).catch(() => [] as PlayerBadge[]),
+      ]);
       if (g !== detailGen.current) return;
       setPlayers(p);
       setUrls(u);
+      setBadges(new Map(b.map((x) => [x.playerId, x])));
     } catch (e) {
       if (g !== detailGen.current) return;
       setPlayers([]);
       setUrls([]);
+      setBadges(new Map());
       showError(errText(e));
     }
   };
@@ -155,6 +223,26 @@ export function SessionsTab({
 
   const visible = useMemo(() => (hideSelf ? players.filter((p) => !p.isLocal) : players), [players, hideSelf]);
   const sel = list.find((r) => r.id === selectedId) ?? null;
+  const columns = useMemo(() => playerColumns(badges), [badges]);
+
+  const fail = (e: unknown) => showError(errText(e));
+
+  const createAlbumHere = async () => {
+    if (!sel) return;
+    const name = await prompt({
+      title: "この写真でアルバムを作る",
+      label: "アルバムの名前",
+      initial: `${sel.worldName} ${sel.joinTime.slice(0, 10)}`,
+      okLabel: "作成",
+    });
+    if (name === null) return;
+    try {
+      const a = await createAlbumFromVisit(sel.id, name);
+      nav.showAlbum(a.id);
+    } catch (e) {
+      fail(e);
+    }
+  };
 
   return (
     <div className="split">
@@ -194,20 +282,66 @@ export function SessionsTab({
               </div>
             </>
           )}
+          {sel && (
+            <div className="visit-actions">
+              {sel.worldId && (
+                <button type="button" onClick={() => openWorldPage(sel.worldId!).catch(fail)}>
+                  ワールドのページ
+                </button>
+              )}
+              <button
+                type="button"
+                title="VRChat のサイトでインスタンスを開きます。インスタンスが残っていない場合は入れません。"
+                onClick={() => openInstance(sel.location).catch(fail)}
+              >
+                このインスタンスを開く
+              </button>
+              {sel.worldRefId != null && (
+                <button type="button" onClick={() => nav.showWorld(sel.worldRefId!)}>
+                  ワールドの情報
+                </button>
+              )}
+              <button type="button" onClick={() => nav.showDay(logicalDay(sel.joinTime, dayStart))}>
+                この日のタイムライン
+              </button>
+            </div>
+          )}
           <label className="check">
             <input type="checkbox" checked={hideSelf} onChange={(e) => setHideSelf(e.target.checked)} />
             自分を隠す
           </label>
         </div>
-        <PhotoStrip photos={visitPhotos} onOpen={setLbIndex} />
+        <PhotoStrip
+          photos={visitPhotos}
+          onOpen={setLbIndex}
+          actions={
+            <>
+              <button type="button" onClick={() => void createAlbumHere()}>
+                この写真でアルバムを作る…
+              </button>
+              {addNote && (
+                <span role="status">
+                  {addNote.text}{" "}
+                  <button type="button" onClick={() => nav.showAlbum(addNote.albumId)}>
+                    アルバムを開く
+                  </button>
+                </span>
+              )}
+            </>
+          }
+        />
         <div className="grow-box">
           <DataGrid<VisitPlayerRow>
             className="fill"
             ariaLabel="同席プレイヤー"
             items={visible}
             getKey={(_, i) => i}
-            columns={playerColumns}
+            columns={columns}
             rowClassName={(r) => (r.isLocal ? "local" : "")}
+            getMenu={(r) => [
+              { label: "VRChat のユーザーページを開く", onClick: () => void openUserPage(r.userId).catch(fail) },
+              { label: "この人のページへ", onClick: () => nav.showPlayer(r.playerId, r.displayName) },
+            ]}
           />
         </div>
         <Splitter direction="row" label="URL 欄の高さ" onDelta={(d) => setUrlHeight((h) => Math.max(60, Math.min(600, h - d)))} />
@@ -228,6 +362,15 @@ export function SessionsTab({
             onNavigatePlayer(id, name);
           })}
           onFavoriteChanged={(id, fav) => setVisitPhotos((l) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
+          extraActions={[
+            {
+              label: "アルバムに追加…",
+              onClick: (ph) =>
+                void addToAlbum([ph.id]).then((r) => {
+                  if (r) setAddNote({ text: describeAdd(r), albumId: r.albumId });
+                }),
+            },
+          ]}
         />
       )}
     </div>

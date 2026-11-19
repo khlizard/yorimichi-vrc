@@ -1,0 +1,121 @@
+/* Albums screen (inside .photo-surface, see DESIGN.md). */
+.al {
+  display: flex;
+  min-height: 0;
+}
+.al-list-pane {
+  flex: 0 0 300px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+}
+.al-list-head {
+  flex: 0 0 auto;
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.al-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.photo-surface .al-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+}
+.photo-surface .al-item:hover:not(:disabled) {
+  background: var(--tile);
+}
+.photo-surface .al-item[aria-current="true"] {
+  background: var(--tile);
+  border-left-color: var(--focus);
+}
+.photo-surface .al-item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.al-cover {
+  flex: 0 0 96px;
+  width: 96px;
+  height: 54px;
+  background: var(--tile);
+  overflow: hidden;
+}
+.al-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.al-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+.al-item-name {
+  font-weight: bold;
+}
+.al-item-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+.al-empty {
+  padding: 24px 16px;
+  color: var(--muted);
+}
+.al-detail {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.al-edit {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.al-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.al-field > span {
+  flex: 0 0 3em;
+  padding-top: 3px;
+  color: var(--muted);
+}
+.al-field input,
+.al-field textarea {
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--tile);
+  color: var(--fg);
+  border-color: var(--button-border);
+}
+.al-field textarea {
+  resize: vertical;
+  font: inherit;
+}
+.al-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+}

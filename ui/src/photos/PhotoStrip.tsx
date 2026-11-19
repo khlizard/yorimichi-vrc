@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { onPhotosChanged, photosForVisit, thumbUrl, type PhotoRow } from "../api";
 import { useLatest } from "../components/hooks";
 import { photoLabel } from "./photoUtil";
@@ -34,11 +34,23 @@ export function useVisitPhotos(visitId: number | null): [PhotoRow[], (f: (p: Pho
 }
 
 /** Horizontal thumbnail strip (72px high); renders nothing when empty. */
-export function PhotoStrip({ photos, onOpen }: { photos: PhotoRow[]; onOpen: (index: number) => void }) {
+export function PhotoStrip({
+  photos,
+  onOpen,
+  actions,
+}: {
+  photos: PhotoRow[];
+  onOpen: (index: number) => void;
+  /** Extra controls shown on the header line. */
+  actions?: ReactNode;
+}) {
   if (photos.length === 0) return null;
   return (
     <div className="strip">
-      <div className="strip-title">このときの写真 ({photos.length.toLocaleString("ja-JP")})</div>
+      <div className="strip-head">
+        <span className="strip-title">このときの写真 ({photos.length.toLocaleString("ja-JP")})</span>
+        {actions}
+      </div>
       <div className="strip-row" role="group" aria-label="このときの写真">
         {photos.map((p, i) => (
           <button

@@ -1,4 +1,4 @@
-import { useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import {
   PLAYER_PAGE_SIZE,
   encounters as fetchEncounters,
@@ -13,6 +13,9 @@ import { Splitter } from "../components/Splitter";
 import { VirtualList } from "../components/VirtualList";
 import { useLatest } from "../components/hooks";
 import { errText, fmtMb, type TabHandle } from "../components/util";
+import { playerMarks, playerProfile, playersByTag, listTags, type PlayerMark, type PlayerProfile, type TagCount } from "../libraryApi";
+import { PlayerProfilePanel } from "../players/PlayerProfilePanel";
+import { RowMarks } from "../players/tagUi";
 
 const columns: Column<EncounterRow>[] = [
   { header: "会った日時", width: 150, text: (r) => r.joinTime },
@@ -55,6 +58,65 @@ export function PlayersTab({
   const [rows, setRows] = useState<EncounterRow[]>([]);
   const gen = useRef(0);
   const encGen = useRef(0);
+  const [tags, setTags] = useState<TagCount[]>([]);
+  const [tagFilter, setTagFilter] = useState<number | null>(null);
+  const tagFilterRef = useRef<number | null>(null);
+  const [marks, setMarks] = useState<Map<number, PlayerMark>>(() => new Map());
+  const [profile, setProfile] = useState<PlayerProfile | null>(null);
+  const profGen = useRef(0);
+
+  const loadTags = async () => {
+    try {
+      const t = await listTags();
+      setTags(t);
+      // A deleted tag cannot stay as the filter.
+      if (tagFilterRef.current != null && !t.some((x) => x.id === tagFilterRef.current)) {
+        tagFilterRef.current = null;
+        setTagFilter(null);
+        void reload();
+      }
+    } catch (e) {
+      showError(errText(e));
+    }
+  };
+
+  const loadMarks = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    try {
+      const m = await playerMarks(ids);
+      setMarks((prev) => {
+        const next = new Map(prev);
+        // Players without a mark are absent from the reply: clear any stale entry.
+        for (const id of ids) next.delete(id);
+        for (const x of m) next.set(x.playerId, x);
+        return next;
+      });
+    } catch {
+      // Marks are decoration; a failure must not disturb the list.
+    }
+  };
+
+  const loadProfile = async (id: number | null) => {
+    const g = ++profGen.current;
+    if (id == null) {
+      setProfile(null);
+      return;
+    }
+    try {
+      const p = await playerProfile(id);
+      if (g === profGen.current) setProfile(p);
+    } catch (e) {
+      if (g === profGen.current) {
+        setProfile(null);
+        showError(errText(e));
+      }
+    }
+  };
+
+  useEffect(() => {
+    void loadTags();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setList = (list: PlayerHit[]) => {
     playersRef.current = list;
@@ -82,9 +144,22 @@ export function PlayersTab({
     selectedIdRef.current = id;
     setSelectedId(id);
     void loadEncounters(id);
+    void loadProfile(id);
   };
 
-  const fetchPage = (offset: number) =>
+  const fetchPage = async (offset: number) => {
+    const tag = tagFilterRef.current;
+    if (tag != null) {
+      // Tag view is unpaged; the search text narrows it on the client.
+      if (offset > 0) return [];
+      const all = await playersByTag(tag);
+      const q = activeTerm.current.toLowerCase();
+      return q === "" ? all : all.filter((p) => `${p.displayName} ${p.otherNames ?? ""}`.toLowerCase().includes(q));
+    }
+    return fetchPaged(offset);
+  };
+
+  const fetchPaged = (offset: number) =>
     activeTerm.current === ""
       ? recentPlayers(range.current.from, range.current.to, offset, PLAYER_PAGE_SIZE)
       : searchPlayers(activeTerm.current, offset, PLAYER_PAGE_SIZE);
@@ -101,7 +176,8 @@ export function PlayersTab({
     }
     if (g !== gen.current) return;
     setList(page);
-    setHasMore(page.length === PLAYER_PAGE_SIZE);
+    setHasMore(tagFilterRef.current == null && page.length === PLAYER_PAGE_SIZE);
+    void loadMarks(page.map((p) => p.id));
     select((page.find((p) => p.id === keep) ?? page[0])?.id ?? null);
   };
 
@@ -112,6 +188,7 @@ export function PlayersTab({
       if (g !== gen.current) return;
       setList([...playersRef.current, ...page]);
       setHasMore(page.length === PLAYER_PAGE_SIZE);
+      void loadMarks(page.map((p) => p.id));
     } catch (e) {
       if (g === gen.current) showError(errText(e));
       throw e;
@@ -124,10 +201,15 @@ export function PlayersTab({
   };
 
   useImperativeHandle(ref, () => ({
-    refresh: () => void reload(),
+    refresh: () => {
+      void reload();
+      void loadTags();
+    },
     loadedCount: () => playersRef.current.length,
     searchFor: (name: string) => {
       setText(name);
+      tagFilterRef.current = null;
+      setTagFilter(null);
       activeTerm.current = name.trim();
       selectedIdRef.current = null;
       void reload();
@@ -148,6 +230,24 @@ export function PlayersTab({
             }}
           />
           <button onClick={search}>検索</button>
+          <select
+            className="tag-filter"
+            aria-label="タグで絞り込む"
+            value={tagFilter ?? ""}
+            onChange={(e) => {
+              const v = e.target.value === "" ? null : Number(e.target.value);
+              tagFilterRef.current = v;
+              setTagFilter(v);
+              void reload();
+            }}
+          >
+            <option value="">タグ: (全て)</option>
+            {tags.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.playerCount})
+              </option>
+            ))}
+          </select>
         </div>
         <VirtualList<PlayerHit>
           className="fill"
@@ -164,6 +264,7 @@ export function PlayersTab({
               <div className="line ellipsis">
                 <b>{p.displayName}</b> <span className="muted">({p.encounterCount}回)</span>{" "}
                 <span className="faint small">{p.lastSeenDate}</span>
+                <RowMarks tags={marks.get(p.id)?.tags ?? []} hasMemo={marks.get(p.id)?.hasMemo ?? false} />
               </div>
               {p.otherNames && <div className="line faint small ellipsis">aka {p.otherNames}</div>}
             </div>
@@ -172,6 +273,17 @@ export function PlayersTab({
       </div>
       <Splitter direction="col" label="一覧の幅" onDelta={(d) => setWidth((w) => Math.max(160, Math.min(700, w + d)))} />
       <div className="pane grow">
+        {profile && (
+          <PlayerProfilePanel
+            profile={profile}
+            allTags={tags}
+            onChanged={() => {
+              void loadProfile(selectedIdRef.current);
+              void loadMarks(playersRef.current.map((p) => p.id));
+              void loadTags();
+            }}
+          />
+        )}
         <DataGrid<EncounterRow>
           className="fill"
           ariaLabel="会った記録"

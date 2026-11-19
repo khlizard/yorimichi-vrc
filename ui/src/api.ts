@@ -51,10 +51,13 @@ export interface VisitRow {
   endedCleanly: boolean;
   playerCount: number;
   duration: string;
+  worldId: string | null;
+  worldRefId: number | null;
 }
 
 export interface VisitPlayerRow {
   playerId: number;
+  userId: string;
   displayName: string;
   isLocal: boolean;
   joinTime: string;

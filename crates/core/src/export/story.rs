@@ -130,6 +130,11 @@ fn write_figure(w: &mut impl Write, photo: &PhotoRow, alt: &str, caption_html: &
     if photo.missing || photo.online_only {
         return Ok(false);
     }
+    // The flag dates from the last scan; re-check so a file that became a cloud placeholder
+    // since then is not downloaded by reading it.
+    if !std::fs::metadata(&photo.path).is_ok_and(|md| md.is_file() && !crate::photos::is_online_only(&md)) {
+        return Ok(false);
+    }
     let Ok(bytes) = jpeg_bytes(Path::new(&photo.path), max_edge, JPEG_QUALITY) else {
         return Ok(false);
     };

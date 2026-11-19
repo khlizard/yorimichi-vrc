@@ -8,9 +8,11 @@ import {
   type DayCount,
   type PhotoRow,
 } from "../api";
+import { describeAdd, useAddToAlbum } from "../albums/addToAlbum";
 import { useDialog } from "../components/Dialog";
 import { useLatest } from "../components/hooks";
 import { errText, type TabHandle } from "../components/util";
+import { useNav } from "../nav";
 import { Lightbox } from "./Lightbox";
 import { PhotoGrid, type GridSize, type PhotoGridHandle } from "./PhotoGrid";
 import type { PhotoFilter } from "./nav";
@@ -82,6 +84,8 @@ export function PhotosTab({
   ref?: Ref<PhotosHandle>;
 }) {
   const { showError } = useDialog();
+  const nav = useNav();
+  const addToAlbum = useAddToAlbum();
   const range = useLatest({ from, to });
   const dayStart = useLatest(dayStartHour);
   const grid = useRef<PhotoGridHandle>(null);
@@ -104,6 +108,9 @@ export function PhotosTab({
   const [rescanning, setRescanning] = useState(false);
   const [lb, setLbState] = useState<number | null>(null);
   const lbRef = useRef<number | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [sel, setSel] = useState<Set<number>>(() => new Set());
+  const [addStatus, setAddStatus] = useState<{ text: string; albumId: number } | null>(null);
 
   const setItems = (l: PhotoRow[]) => {
     itemsRef.current = l;
@@ -156,7 +163,10 @@ export function PhotosTab({
       setDays(d);
       setLoaded(true);
       setLb(null);
-      if (resetScroll) grid.current?.scrollToTop();
+      if (resetScroll) {
+        setSel(new Set());
+        grid.current?.scrollToTop();
+      }
     } catch (e) {
       if (g === gen.current) showError(errText(e));
     }
@@ -233,6 +243,12 @@ export function PhotosTab({
     }
   };
 
+  const addPhotos = async (ids: number[]) => {
+    const r = await addToAlbum(ids);
+    if (r) setAddStatus({ text: describeAdd(r), albumId: r.albumId });
+    return r;
+  };
+
   const emptyText =
     photoFolders.length === 0
       ? "写真フォルダが設定されていません。メニューの「ファイル → 設定…」で指定してください。"
@@ -306,6 +322,37 @@ export function PhotosTab({
             {chipPrefix}: {filter.label} ×
           </button>
         )}
+        <button
+          type="button"
+          aria-pressed={selecting}
+          onClick={() => {
+            setSelecting(!selecting);
+            setSel(new Set());
+          }}
+        >
+          選択
+        </button>
+        {selecting && (
+          <>
+            <span className="ps-total" role="status">
+              {sel.size.toLocaleString("ja-JP")} 枚を選択中
+            </span>
+            <button
+              type="button"
+              disabled={sel.size === 0}
+              onClick={() =>
+                void addPhotos([...sel]).then((r) => {
+                  if (r) setSel(new Set());
+                })
+              }
+            >
+              アルバムに追加…
+            </button>
+            <button type="button" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
+              選択を解除
+            </button>
+          </>
+        )}
         <span className="ps-spacer" />
         {loaded && <span className="ps-total">{total.toLocaleString("ja-JP")} 枚</span>}
         <button
@@ -329,6 +376,17 @@ export function PhotosTab({
           </button>
         </div>
       )}
+      {addStatus && (
+        <div className="ps-notice" role="status">
+          <span>{addStatus.text}</span>
+          <button type="button" onClick={() => nav.showAlbum(addStatus.albumId)}>
+            アルバムを開く
+          </button>
+          <button type="button" onClick={() => setAddStatus(null)}>
+            閉じる
+          </button>
+        </div>
+      )}
       <PhotoGrid
         ref={grid}
         items={items}
@@ -338,6 +396,17 @@ export function PhotosTab({
         hasMore={hasMore}
         loadMore={loadMore}
         onOpen={(i) => setLb(i)}
+        selectable={selecting}
+        selectedIds={sel}
+        onToggleSelect={(id, range) =>
+          setSel((s) => {
+            const n = new Set(s);
+            if (range && range.length > 0) range.forEach((x) => n.add(x));
+            else if (n.has(id)) n.delete(id);
+            else n.add(id);
+            return n;
+          })
+        }
         emptyText={emptyText}
       />
       {lb !== null && (
@@ -358,6 +427,7 @@ export function PhotosTab({
             onNavigatePlayer(id, name);
           }}
           onFavoriteChanged={(id, fav) => setItems(itemsRef.current.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
+          extraActions={[{ label: "アルバムに追加…", onClick: (ph) => void addPhotos([ph.id]) }]}
           onNearEnd={() => {
             if (hasMore) void loadMore().catch(() => {});
           }}

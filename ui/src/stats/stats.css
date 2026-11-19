@@ -1,0 +1,188 @@
+/* Statistics: normal (light) surface. One blue in 5 steps for activity. */
+.st {
+  --lv0: var(--line-soft);
+  --lv1: color-mix(in srgb, var(--focus) 25%, var(--bg));
+  --lv2: color-mix(in srgb, var(--focus) 48%, var(--bg));
+  --lv3: color-mix(in srgb, var(--focus) 74%, var(--bg));
+  --lv4: var(--focus);
+  overflow: auto;
+  padding: 12px 16px 32px;
+}
+.st-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.st-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 0 0 20px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.st-summary > div {
+  min-width: 0;
+}
+.st-summary dt {
+  color: var(--status);
+  font-size: 12px;
+}
+.st-summary dd {
+  margin: 0;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.st-empty {
+  color: var(--status);
+  margin: 12px 0;
+}
+.st h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---- Heatmap ---- */
+.st-heat-wrap {
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+}
+.st-heat {
+  display: grid;
+  grid-template-columns: 22px repeat(53, 12px);
+  grid-template-rows: 14px repeat(7, 12px);
+  gap: 2px;
+  width: max-content;
+}
+.st-heat .lbl {
+  font-size: 11px;
+  line-height: 12px;
+  color: var(--status);
+  white-space: nowrap;
+  overflow: visible;
+}
+.st-heat .cell-btn {
+  width: 12px;
+  height: 12px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: var(--lv0);
+}
+.st-heat .cell-btn:hover:not(:disabled) {
+  background: var(--lv0);
+  outline: 1px solid var(--fg);
+}
+.st-heat .cell-btn.l1,
+.st-heat .cell-btn.l1:hover:not(:disabled) {
+  background: var(--lv1);
+}
+.st-heat .cell-btn.l2,
+.st-heat .cell-btn.l2:hover:not(:disabled) {
+  background: var(--lv2);
+}
+.st-heat .cell-btn.l3,
+.st-heat .cell-btn.l3:hover:not(:disabled) {
+  background: var(--lv3);
+}
+.st-heat .cell-btn.l4,
+.st-heat .cell-btn.l4:hover:not(:disabled) {
+  background: var(--lv4);
+}
+.st-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--status);
+  margin-bottom: 20px;
+}
+.st-legend i {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+.st-legend .l0 {
+  background: var(--lv0);
+}
+.st-legend .l1 {
+  background: var(--lv1);
+}
+.st-legend .l2 {
+  background: var(--lv2);
+}
+.st-legend .l3 {
+  background: var(--lv3);
+}
+.st-legend .l4 {
+  background: var(--lv4);
+}
+
+/* ---- Rankings ---- */
+.st-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+@media (max-width: 900px) {
+  .st-cols {
+    grid-template-columns: 1fr;
+  }
+}
+.st-rank {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.st-rank li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 26px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.st-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--focus) 14%, transparent);
+  pointer-events: none;
+}
+.st-rank .name {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-rank .num {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 56px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.st-rank button.name {
+  background: transparent;
+  border: none;
+  padding: 0;
+  min-height: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--button-border);
+  text-underline-offset: 3px;
+}
+.st-rank button.name:hover:not(:disabled) {
+  background: transparent;
+  text-decoration-color: var(--fg);
+}

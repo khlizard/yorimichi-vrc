@@ -11,7 +11,7 @@ use serde::Serialize;
 use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{AppHandle, Emitter, Manager};
 use vrclogger_core::data::photo_query::PhotoService;
-use vrclogger_core::photos::{make_thumbnail, relink_visits, scan_folders};
+use vrclogger_core::photos::{is_online_only, make_thumbnail, relink_visits, scan_folders};
 
 use crate::app::{set_status, AppState};
 
@@ -111,8 +111,12 @@ impl PhotoFile {
     fn key(&self) -> String {
         thumb_key(&self.path, self.file_size, &self.mtime)
     }
+    /// The DB flag dates from the last scan; the sync client may have turned the file into a
+    /// placeholder since, so the attribute is checked again right before any read.
     fn servable(&self) -> bool {
-        !self.missing && !self.online_only
+        !self.missing
+            && !self.online_only
+            && std::fs::metadata(&self.path).is_ok_and(|md| md.is_file() && !is_online_only(&md))
     }
 }
 

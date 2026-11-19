@@ -330,9 +330,15 @@ span.lb-name {
   padding: 4px 6px;
   border-bottom: 1px solid var(--line);
 }
+.strip-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding-bottom: 3px;
+}
 .strip-title {
   font-weight: bold;
-  padding-bottom: 3px;
 }
 .strip-row {
   display: flex;
