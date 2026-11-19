@@ -38,16 +38,22 @@ DB に触れない自己完結の HTML を保存できます。Dropbox 内に保
 ```powershell
 pnpm install          # 依存パッケージの取得
 pnpm tauri dev        # 開発モードで起動
-cargo test --workspace  # テスト (logs/ に実ログを置くと実ログのテストも実行)
+pnpm test:rust        # テスト (logs/ に実ログを置くと実ログのテストも実行)
+pnpm lint:rust        # clippy
 ```
+
+cargo は直接実行せず、上の `pnpm` スクリプト経由で実行してください。
+`scripts/with-target.mjs` がビルド出力先を Dropbox の外 (`%LOCALAPPDATA%\vrclogger-dev\target`) に向け、
+exe に埋め込まれるパスからユーザー名を取り除きます。環境変数 `CARGO_TARGET_DIR` があればそちらを使います。
 
 ## ビルドと配布
 
 ```powershell
-pnpm tauri build --no-bundle   # target\release\vrclogger.exe を作成
+pnpm tauri build --no-bundle   # %LOCALAPPDATA%\vrclogger-dev\target\release\vrclogger.exe を作成
 pwsh scripts/pack.ps1          # releases\ に Velopack のインストーラー (Setup.exe) を作成
 ```
 
+`pack.ps1` は `releases\` に同じバージョンがあると止まります。配布のたびに `Cargo.toml` と `src-tauri/tauri.conf.json` のバージョンを上げてください。
 インストーラーは `%LOCALAPPDATA%\VrcLogger` にアプリを入れます。
 
 ## 設定
@@ -74,6 +80,6 @@ pwsh scripts/pack.ps1          # releases\ に Velopack のインストーラー
 crates/core/   # ログ解析・SQLite 取り込み・検索・HTML 書き出し (Tauri 非依存、テストはここ)
 src-tauri/     # Tauri アプリ (コマンド、トレイ、自動取り込み、設定)
 ui/            # 画面 (React + TypeScript、Vite)
-scripts/       # pack.ps1 (Velopack パッケージ作成)
+scripts/       # pack.ps1 (Velopack パッケージ作成)、with-target.mjs (cargo の出力先とパスの置き換え)
 logs/          # (Git 管理外) 実ログを置くと実ログのテストが実行される
 ```

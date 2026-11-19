@@ -1,12 +1,14 @@
 {
-  "name": "vrclogger",
+  "name": "vrclogger-dev",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "tauri": "tauri"
+    "tauri": "node scripts/with-target.mjs tauri",
+    "test:rust": "node scripts/with-target.mjs cargo test --workspace",
+    "lint:rust": "node scripts/with-target.mjs cargo clippy --workspace --all-targets"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.14.26",

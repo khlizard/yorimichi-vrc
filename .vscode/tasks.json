@@ -11,9 +11,9 @@
         },
         {
             "label": "test",
-            "detail": "Rust のテスト (cargo test --workspace)",
+            "detail": "Rust のテスト (pnpm test:rust)",
             "type": "shell",
-            "command": "cargo test --workspace",
+            "command": "pnpm test:rust",
             "group": { "kind": "test", "isDefault": true },
             "problemMatcher": "$rustc"
         },
