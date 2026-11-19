@@ -14,6 +14,8 @@ use crate::{Error, Result};
 /// Marker in `viewer.html` that is replaced by the JSON data. Must appear exactly once.
 pub const PLACEHOLDER: &str = "/*__VRCLOG_DATA__*/null";
 
+pub mod story;
+
 const TEMPLATE: &str = include_str!("viewer.html");
 
 /// Renders the viewer for the current database contents and writes it to `output_path`

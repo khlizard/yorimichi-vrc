@@ -2,7 +2,7 @@
 // All commands return Promises that reject with a string (Japanese message) on failure.
 // Dates are "yyyy-MM-dd" strings or null (inclusive on both ends).
 // Timestamps in DTOs are local-time strings "yyyy-MM-dd HH:mm:ss".
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 /** Page size the UI should use for the player list (recentPlayers / searchPlayers). */
@@ -11,6 +11,8 @@ export const PLAYER_PAGE_SIZE = 100;
 export const RAW_PAGE_SIZE = 200;
 /** Sentinel the UI may show for "no filter" in kind/level selects; the backend treats it (and "") as none. */
 export const ALL = "(全て)";
+/** Page size the UI should use for the photo grid (photos). */
+export const PHOTO_PAGE_SIZE = 200;
 
 // ---- DTOs (camelCase, mirrors vrclogger-core data/dtos.rs) ----
 
@@ -111,6 +113,56 @@ export interface ModerationRow {
   worldName: string;
 }
 
+export interface PhotoRow {
+  id: number;
+  path: string;
+  fileName: string;
+  /** "yyyy-MM-dd HH:mm:ss" */
+  takenAt: string;
+  timeSource: string;
+  width: number | null;
+  height: number | null;
+  favorite: boolean;
+  missing: boolean;
+  /** Cloud placeholder: no thumbnail / full image is available. */
+  onlineOnly: boolean;
+  visitId: number | null;
+  worldName: string | null;
+  worldRefId: number | null;
+}
+
+export interface PhotoPlayer {
+  playerId: number;
+  userId: string;
+  displayName: string;
+  isLocal: boolean;
+}
+
+export interface PhotoDetail {
+  photo: PhotoRow;
+  worldId: string | null;
+  instanceId: string | null;
+  location: string | null;
+  visitJoinTime: string | null;
+  visitLeaveTime: string | null;
+  authorId: string | null;
+  players: PhotoPlayer[];
+}
+
+export interface DayCount {
+  /** yyyy-MM-dd (shifted by the day-start-hour setting) */
+  day: string;
+  count: number;
+}
+
+/** Payload of the "photos-changed" event. */
+export interface PhotosChanged {
+  added: number;
+  updated: number;
+  missing: number;
+  relinked: number;
+}
+
 // ---- Settings (PascalCase keys, as stored in %APPDATA%\VrcLogger\vrclogger.settings.json) ----
 
 export interface Settings {
@@ -121,6 +173,25 @@ export interface Settings {
   RawLogRetentionDays: number;
   RawLogNoisePatterns: string[];
   LastViewerExportFolder: string | null;
+  /** false until the user has answered the "stay in the tray?" question. */
+  TrayChoiceMade: boolean;
+  PhotoFolders: string[];
+  /** 0-23: times before this hour count as the previous day. */
+  DayStartHour: number;
+  ShowFirstMet: boolean;
+  /** 0 = no badge. */
+  ReunionDays: number;
+  AutoVacuum: boolean;
+  AutoVacuumMinDbMb: number;
+  /** Relative paths are resolved against the settings folder. */
+  BackupFolder: string;
+  /** 0 = no automatic backup. */
+  BackupIntervalDays: number;
+  BackupKeepCount: number;
+  /** Backend-owned, "yyyy-MM-dd HH:mm:ss" local time. */
+  LastBackupAt: string | null;
+  /** http(s) URL or folder; empty = never check. */
+  UpdateFeed: string;
 }
 
 export interface Status {
@@ -128,6 +199,29 @@ export interface Status {
   importing: boolean;
   /** Resolved absolute DB path. */
   dbPath: string;
+  dbSizeBytes: number;
+  /** Bytes a VACUUM would give back. */
+  reclaimableBytes: number;
+  /** Big enough and mostly free pages: worth running VACUUM. */
+  vacuumRecommended: boolean;
+  version: string;
+}
+
+export interface UpdateReady {
+  version: string;
+}
+
+export interface ChooseButton {
+  id: string;
+  label: string;
+  primary?: boolean;
+}
+export interface ChooseOptions {
+  title: string;
+  message: string;
+  buttons: ChooseButton[];
+  /** Result of Escape; defaults to null. */
+  cancelId?: string;
 }
 
 export interface ImportFinished {
@@ -154,7 +248,15 @@ export const saveSettings = (settings: Settings, startWithWindows: boolean) =>
   invoke<string>("save_settings", { settings, startWithWindows });
 export const defaultNoisePatterns = () => invoke<string[]>("default_noise_patterns");
 /** Folder picker; null when cancelled. */
-export const pickFolder = () => invoke<string | null>("pick_folder");
+export const pickFolder = (title?: string) => invoke<string | null>("pick_folder", { title: title ?? null });
+/** Answer to the "ask-tray" question: stay = keep running in the tray (hides the window), else exits the app. */
+export const answerTrayChoice = (stay: boolean) => invoke<void>("answer_tray_choice", { stay });
+/** Backs up the DB now; the result arrives via status events. */
+export const backupNow = () => invoke<void>("backup_now");
+/** Manual update check; the result arrives via status / "update-ready" events. */
+export const checkUpdate = () => invoke<void>("check_update");
+/** Applies the downloaded update and restarts the app. */
+export const applyUpdate = () => invoke<void>("apply_update");
 export const autostartGet = () => invoke<boolean>("autostart_get");
 /** Clipboard copy with retries (IME lock). */
 export const copyText = (text: string) => invoke<void>("copy_text", { text });
@@ -195,6 +297,57 @@ export const notificationKinds = () => invoke<string[]>("notification_kinds");
 export const searchModeration = (term: string, from: string | null, to: string | null) =>
   invoke<ModerationRow[]>("search_moderation", { term, from, to });
 
+export interface PhotoQuery {
+  from?: string | null;
+  to?: string | null;
+  worldRefId?: number | null;
+  playerId?: number | null;
+  visitId?: number | null;
+  favoriteOnly?: boolean;
+  /** Keyset paging: takenAt / id of the last row received (omit for the first page). */
+  beforeTime?: string | null;
+  beforeId?: number | null;
+  /** Clamped to 1..500 by the backend. */
+  limit: number;
+}
+
+/** Newest first. */
+export const photos = (q: PhotoQuery) =>
+  invoke<PhotoRow[]>("photos", {
+    from: q.from ?? null,
+    to: q.to ?? null,
+    worldRefId: q.worldRefId ?? null,
+    playerId: q.playerId ?? null,
+    visitId: q.visitId ?? null,
+    favoriteOnly: q.favoriteOnly ?? false,
+    beforeTime: q.beforeTime ?? null,
+    beforeId: q.beforeId ?? null,
+    limit: q.limit,
+  });
+export const photoDays = (
+  from: string | null,
+  to: string | null,
+  worldRefId: number | null,
+  playerId: number | null,
+  favoriteOnly: boolean,
+) => invoke<DayCount[]>("photo_days", { from, to, worldRefId, playerId, favoriteOnly });
+export const photosForVisit = (visitId: number) => invoke<PhotoRow[]>("photos_for_visit", { visitId });
+export const photoDetail = (id: number) => invoke<PhotoDetail | null>("photo_detail", { id });
+export const setPhotoFavorite = (id: number, favorite: boolean) =>
+  invoke<void>("set_photo_favorite", { id, favorite });
+export const photoCount = () => invoke<number>("photo_count");
+/** Manual import + photo scan (always scans). */
+export const rescanPhotos = () => invoke<void>("rescan_photos");
+/** Show the file selected in Explorer. */
+export const revealPhoto = (id: number) => invoke<void>("reveal_photo", { id });
+/** Open with the default app. */
+export const openPhoto = (id: number) => invoke<void>("open_photo", { id });
+
+/** 400px JPEG thumbnail (vrcphoto scheme; 404 for missing / online-only photos). */
+export const thumbUrl = (id: number): string => convertFileSrc(`thumb/${id}`, "vrcphoto");
+/** Original image file. */
+export const fullUrl = (id: number): string => convertFileSrc(`full/${id}`, "vrcphoto");
+
 // ---- Events ----
 
 /** Every status text change (progress, errors, results). Payload: string. */
@@ -206,3 +359,14 @@ export const onImportFinished = (cb: (e: ImportFinished) => void): Promise<Unlis
 /** Emitted whenever the importing flag flips (payload boolean), so the UI can disable buttons. */
 export const onImporting = (cb: (importing: boolean) => void): Promise<UnlistenFn> =>
   listen<boolean>("importing", (e) => cb(e.payload));
+/** Close button pressed before the tray question was answered: show the choice dialog. */
+export const onAskTray = (cb: () => void): Promise<UnlistenFn> => listen("ask-tray", () => cb());
+/** Settings were saved (or changed by the backend, e.g. LastBackupAt). Payload: the saved Settings. */
+export const onSettingsChanged = (cb: (s: Settings) => void): Promise<UnlistenFn> =>
+  listen<Settings>("settings-changed", (e) => cb(e.payload));
+/** An update was downloaded and waits for a restart. */
+export const onUpdateReady = (cb: (e: UpdateReady) => void): Promise<UnlistenFn> =>
+  listen<UpdateReady>("update-ready", (e) => cb(e.payload));
+/** The photo library changed (scan added / updated / marked missing, or visit links changed). */
+export const onPhotosChanged = (cb: (e: PhotosChanged) => void): Promise<UnlistenFn> =>
+  listen<PhotosChanged>("photos-changed", (e) => cb(e.payload));

@@ -35,7 +35,18 @@ pub fn checkpoint_truncate(conn: &Connection) -> Result<()> {
 /// Creates all tables, FTS5 index, triggers and indices if they do not exist yet.
 pub fn ensure_created(conn: &Connection) -> Result<()> {
     conn.execute_batch(SCHEMA)?;
+    // Every statement above is idempotent; the version only records what the file contains.
+    if schema_version(conn)? < SCHEMA_VERSION {
+        conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    }
     Ok(())
+}
+
+/// Current schema version written to `PRAGMA user_version` (0 = databases from before 0.2.0).
+pub const SCHEMA_VERSION: i64 = 1;
+
+pub fn schema_version(conn: &Connection) -> Result<i64> {
+    Ok(conn.query_row("PRAGMA user_version;", [], |r| r.get::<_, i64>(0))?)
 }
 
 /// Rebuilds the database file so space freed by deletes is returned to the OS.
@@ -51,6 +62,21 @@ pub fn file_size_bytes(conn: &Connection) -> Result<i64> {
         [],
         |r| r.get::<_, i64>(0),
     )?)
+}
+
+/// Bytes a VACUUM would give back (`freelist_count * page_size`).
+pub fn reclaimable_bytes(conn: &Connection) -> Result<i64> {
+    Ok(conn.query_row(
+        "SELECT freelist_count * page_size FROM pragma_freelist_count(), pragma_page_size();",
+        [],
+        |r| r.get::<_, i64>(0),
+    )?)
+}
+
+/// Writes a compact, consistent copy of the database to `dest` (which must not exist yet).
+pub fn backup_into(conn: &Connection, dest: impl AsRef<Path>) -> Result<()> {
+    conn.execute("VACUUM INTO ?1;", [dest.as_ref().to_string_lossy().as_ref()])?;
+    Ok(())
 }
 
 /// Formats a timestamp as stored in the database: `yyyy-MM-dd HH:mm:ss`.
@@ -184,4 +210,65 @@ CREATE INDEX IF NOT EXISTS idx_url_file        ON url_events(file_id);
 CREATE INDEX IF NOT EXISTS idx_raw_file        ON raw_events(file_id);
 CREATE INDEX IF NOT EXISTS idx_raw_time        ON raw_events(event_time);
 CREATE INDEX IF NOT EXISTS idx_raw_visit       ON raw_events(visit_id);
+
+-- ---- Schema version 1: photo library and user-written data ----
+-- visits.id changes on every re-import, so photos.visit_id is only a cache that is
+-- re-derived from taken_at (no foreign key). players.id / worlds.id are stable.
+CREATE TABLE IF NOT EXISTS photos (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  file_name TEXT NOT NULL,
+  file_size INTEGER NOT NULL,
+  mtime TEXT NOT NULL,
+  taken_at TEXT NOT NULL,
+  time_source TEXT NOT NULL,
+  width INTEGER,
+  height INTEGER,
+  xmp_world_id TEXT,
+  xmp_world_name TEXT,
+  xmp_author_id TEXT,
+  visit_id INTEGER,
+  favorite INTEGER NOT NULL DEFAULT 0,
+  missing INTEGER NOT NULL DEFAULT 0,
+  online_only INTEGER NOT NULL DEFAULT 0);
+
+CREATE TABLE IF NOT EXISTS player_notes (
+  player_id INTEGER PRIMARY KEY REFERENCES players(id),
+  memo TEXT NOT NULL,
+  updated_at TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS tags (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  color TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS player_tags (
+  player_id INTEGER NOT NULL REFERENCES players(id),
+  tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (player_id, tag_id));
+
+CREATE TABLE IF NOT EXISTS world_notes (
+  world_id INTEGER PRIMARY KEY REFERENCES worlds(id),
+  memo TEXT NOT NULL,
+  favorite INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS albums (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  cover_photo_id INTEGER,
+  created_at TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS album_photos (
+  album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+  photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (album_id, photo_id));
+
+CREATE INDEX IF NOT EXISTS idx_photos_taken    ON photos(taken_at, id);
+CREATE INDEX IF NOT EXISTS idx_photos_visit    ON photos(visit_id);
+CREATE INDEX IF NOT EXISTS idx_player_tags_tag ON player_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_album_photos    ON album_photos(album_id, position);
+CREATE INDEX IF NOT EXISTS idx_enc_player_leave ON encounters(player_id, leave_time);
 "#;

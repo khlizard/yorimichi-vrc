@@ -8,12 +8,15 @@ version.workspace = true
 name = "vrclogger_core"
 
 [dependencies]
+base64 = "0.22"
 chrono = { version = "0.4.45", features = ["serde"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 regex = "1.13.2"
 rusqlite = { version = "0.43.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
+walkdir = "2"
 
 [dev-dependencies]
 tempfile = "3.27.0"

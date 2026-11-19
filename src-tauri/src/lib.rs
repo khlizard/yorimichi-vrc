@@ -1,28 +1,44 @@
 mod app;
 mod commands;
+mod idle;
+mod library_commands;
+mod maintenance;
+mod photos;
 mod settings;
+mod update;
 
 use std::sync::atomic::Ordering;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 
 use app::AppState;
 use settings::Settings;
 
 const ID_MENU_EXPORT: &str = "menu_export";
+const ID_MENU_BACKUP: &str = "menu_backup";
+const ID_MENU_SETTINGS: &str = "menu_settings";
+const ID_MENU_UPDATE: &str = "menu_update";
 const ID_MENU_EXIT: &str = "menu_exit";
 const ID_TRAY_OPEN: &str = "tray_open";
 const ID_TRAY_IMPORT: &str = "tray_import";
 const ID_TRAY_EXPORT: &str = "tray_export";
+const ID_TRAY_SETTINGS: &str = "tray_settings";
 const ID_TRAY_EXIT: &str = "tray_exit";
 
 fn handle_menu(app: &AppHandle, id: &str) {
     match id {
         ID_MENU_EXPORT | ID_TRAY_EXPORT => {
             tauri::async_runtime::spawn(app::export_viewer(app.clone()));
+        }
+        ID_MENU_BACKUP => {
+            tauri::async_runtime::spawn(maintenance::backup_now(app.clone(), false));
+        }
+        ID_MENU_SETTINGS | ID_TRAY_SETTINGS => app::open_settings(app),
+        ID_MENU_UPDATE => {
+            tauri::async_runtime::spawn(update::check(app.clone(), true));
         }
         ID_MENU_EXIT | ID_TRAY_EXIT => app::exit_app(app),
         ID_TRAY_OPEN => app::show_main(app),
@@ -35,19 +51,25 @@ fn handle_menu(app: &AppHandle, id: &str) {
 
 fn build_window_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let export = MenuItem::with_id(app, ID_MENU_EXPORT, "閲覧用 HTML を書き出す…", true, None::<&str>)?;
-    let sep = PredefinedMenuItem::separator(app)?;
+    let backup = MenuItem::with_id(app, ID_MENU_BACKUP, "今すぐバックアップ", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, ID_MENU_SETTINGS, "設定(&S)…", true, None::<&str>)?;
     let exit = MenuItem::with_id(app, ID_MENU_EXIT, "終了(&X)", true, None::<&str>)?;
-    let file = Submenu::with_items(app, "ファイル(&F)", true, &[&export, &sep, &exit])?;
-    Menu::with_items(app, &[&file])
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let file = Submenu::with_items(app, "ファイル(&F)", true, &[&export, &backup, &sep1, &settings, &sep2, &exit])?;
+    let update = MenuItem::with_id(app, ID_MENU_UPDATE, "更新を確認", true, None::<&str>)?;
+    let help = Submenu::with_items(app, "ヘルプ(&H)", true, &[&update])?;
+    Menu::with_items(app, &[&file, &help])
 }
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, ID_TRAY_OPEN, "開く", true, None::<&str>)?;
     let import = MenuItem::with_id(app, ID_TRAY_IMPORT, "今すぐ取り込み", true, None::<&str>)?;
     let export = MenuItem::with_id(app, ID_TRAY_EXPORT, "閲覧用 HTML を書き出す…", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, ID_TRAY_SETTINGS, "設定…", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
     let exit = MenuItem::with_id(app, ID_TRAY_EXIT, "終了", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &import, &export, &sep, &exit])?;
+    let menu = Menu::with_items(app, &[&open, &import, &export, &settings, &sep, &exit])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
         .tooltip("VrcLogger")
@@ -67,6 +89,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 
 pub fn run() {
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("vrcphoto", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                responder.respond(photos::handle_request(app, request).await);
+            });
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             app::show_main(app);
         }))
@@ -79,10 +107,22 @@ pub fn run() {
                     return;
                 }
                 let st = window.app_handle().state::<AppState>();
-                let minimize = st.settings.lock().unwrap().minimize_to_tray;
-                if !st.exit_requested.load(Ordering::SeqCst) && minimize {
-                    api.prevent_close();
+                if st.exit_requested.load(Ordering::SeqCst) {
+                    return;
+                }
+                let (minimize, choice_made) = {
+                    let s = st.settings.lock().unwrap();
+                    (s.minimize_to_tray, s.tray_choice_made)
+                };
+                api.prevent_close();
+                if !choice_made {
+                    // Never stay resident without having asked: the UI shows the choice dialog.
+                    let _ = window.emit("ask-tray", ());
+                } else if minimize {
                     let _ = window.hide();
+                } else {
+                    // The tray icon / settings window would otherwise keep the process alive.
+                    app::exit_app(window.app_handle());
                 }
             }
         })
@@ -96,6 +136,10 @@ pub fn run() {
             commands::save_settings,
             commands::default_noise_patterns,
             commands::pick_folder,
+            commands::answer_tray_choice,
+            commands::backup_now,
+            commands::check_update,
+            commands::apply_update,
             commands::autostart_get,
             commands::copy_text,
             commands::open_url,
@@ -111,6 +155,51 @@ pub fn run() {
             commands::search_notifications,
             commands::notification_kinds,
             commands::search_moderation,
+            commands::rescan_photos,
+            commands::photos,
+            commands::photo_days,
+            commands::photos_for_visit,
+            commands::photo_detail,
+            commands::set_photo_favorite,
+            commands::photo_count,
+            commands::reveal_photo,
+            commands::open_photo,
+            library_commands::list_tags,
+            library_commands::create_tag,
+            library_commands::update_tag,
+            library_commands::delete_tag,
+            library_commands::set_player_tags,
+            library_commands::set_player_memo,
+            library_commands::player_profile,
+            library_commands::players_by_tag,
+            library_commands::player_marks,
+            library_commands::visit_player_badges,
+            library_commands::worlds,
+            library_commands::world,
+            library_commands::set_world_note,
+            library_commands::timeline_day,
+            library_commands::activity,
+            library_commands::adjacent_active_day,
+            library_commands::latest_active_day,
+            library_commands::on_this_day,
+            library_commands::stats,
+            library_commands::years,
+            library_commands::albums,
+            library_commands::album,
+            library_commands::create_album,
+            library_commands::update_album,
+            library_commands::delete_album,
+            library_commands::album_add_photos,
+            library_commands::album_remove_photos,
+            library_commands::album_reorder,
+            library_commands::album_photos,
+            library_commands::albums_of_photo,
+            library_commands::create_album_from_visit,
+            library_commands::export_album_html,
+            library_commands::export_day_html,
+            library_commands::open_world_page,
+            library_commands::open_user_page,
+            library_commands::open_instance,
         ])
         .setup(|tauri_app| {
             let handle = tauri_app.handle().clone();
@@ -149,6 +238,9 @@ pub fn run() {
             }
 
             tauri::async_runtime::spawn(app::run_import(handle.clone(), false));
+            maintenance::start(&handle);
+            update::start(&handle);
+            photos::start_pregen_delayed(&handle);
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -162,14 +254,24 @@ pub fn run() {
 
 /// `app.exit` ends the process without dropping managed state, so close the query
 /// connection here; closing the last connection lets SQLite fold the WAL back and delete it.
-fn close_query_db(app: &AppHandle) {
+pub(crate) fn close_query_db(app: &AppHandle) {
     let st = app.state::<AppState>();
     let Some(conn) = st.query.lock().unwrap().take() else {
         return;
     };
     // While an import holds the write lock the checkpoint would wait out the busy timeout.
     if !st.importing.load(Ordering::SeqCst) {
-        let _ = vrclogger_core::data::db::checkpoint_truncate(&conn);
+        use vrclogger_core::data::db;
+        let min_mb = st.settings.lock().unwrap().auto_vacuum_min_db_mb;
+        let auto = st.settings.lock().unwrap().auto_vacuum;
+        if auto {
+            let size = db::file_size_bytes(&conn).unwrap_or(0);
+            let reclaimable = db::reclaimable_bytes(&conn).unwrap_or(0);
+            if maintenance::should_vacuum(size, reclaimable, min_mb) {
+                let _ = db::vacuum(&conn);
+            }
+        }
+        let _ = db::checkpoint_truncate(&conn);
     }
     drop(conn);
 }

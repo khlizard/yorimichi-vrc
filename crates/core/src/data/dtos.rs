@@ -80,12 +80,17 @@ pub struct VisitRow {
     pub ended_cleanly: bool,
     pub player_count: i32,
     pub duration: String,
+    /// `wrld_...` id (for vrchat.com links); `None` if the visit has no world row.
+    pub world_id: Option<String>,
+    /// `worlds.id` (stable across re-imports).
+    pub world_ref_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VisitPlayerRow {
     pub player_id: i64,
+    pub user_id: String,
     pub display_name: String,
     pub is_local: bool,
     pub join_time: String,

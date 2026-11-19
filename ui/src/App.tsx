@@ -1,24 +1,40 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { PLAYER_PAGE_SIZE, RAW_PAGE_SIZE, getStatus, importNow, onImportFinished, onImporting, onStatus } from "./api";
+import {
+  PLAYER_PAGE_SIZE,
+  RAW_PAGE_SIZE,
+  answerTrayChoice,
+  applyUpdate,
+  getSettings,
+  getStatus,
+  importNow,
+  onAskTray,
+  onImportFinished,
+  onImporting,
+  onSettingsChanged,
+  onStatus,
+  onUpdateReady,
+  type Settings,
+} from "./api";
 import { DialogProvider, useDialog } from "./components/Dialog";
 import { errText, type TabHandle } from "./components/util";
 import { AvatarsTab } from "./tabs/AvatarsTab";
 import { LogsTab } from "./tabs/LogsTab";
+import { PhotoNavContext, type PhotoFilter } from "./photos/nav";
+import { PhotosTab, type PhotosHandle } from "./photos/PhotosTab";
 import { NotificationsTab } from "./tabs/NotificationsTab";
-import { PlayersTab } from "./tabs/PlayersTab";
+import { PlayersTab, type PlayersHandle } from "./tabs/PlayersTab";
 import { SessionsTab, type SessionsHandle } from "./tabs/SessionsTab";
-import { SettingsTab } from "./tabs/SettingsTab";
 import { UrlsTab } from "./tabs/UrlsTab";
 
 const TABS = [
+  { id: "photos", label: "写真" },
   { id: "players", label: "プレイヤー" },
   { id: "sessions", label: "セッション" },
   { id: "urls", label: "URL" },
   { id: "avatars", label: "アバター" },
   { id: "notifications", label: "通知" },
   { id: "logs", label: "生ログ" },
-  { id: "settings", label: "設定" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -33,15 +49,21 @@ export default function App() {
 }
 
 function Main() {
-  const { showError } = useDialog();
+  const { showError, choose } = useDialog();
   const [tab, setTab] = useState<TabId>("players");
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [importing, setImporting] = useState(false);
+  // Latest settings, kept for features that depend on them (badges, day boundary).
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const askingTray = useRef(false);
+  const chooseRef = useRef(choose);
+  chooseRef.current = choose;
 
   // Imperative handles of every refreshable tab. Refresh is explicit: App calls handle.refresh().
-  const players = useRef<TabHandle>(null);
+  const photos = useRef<PhotosHandle>(null);
+  const players = useRef<PlayersHandle>(null);
   const sessions = useRef<SessionsHandle>(null);
   const urls = useRef<TabHandle>(null);
   const avatars = useRef<TabHandle>(null);
@@ -52,7 +74,7 @@ function Main() {
 
   const refreshAll = () => {
     pending.current = false;
-    for (const h of [players, sessions, urls, avatars, notifications, logs]) h.current?.refresh();
+    for (const h of [photos, players, sessions, urls, avatars, notifications, logs]) h.current?.refresh();
   };
   const refreshAllRef = useRef(refreshAll);
   refreshAllRef.current = refreshAll;
@@ -74,7 +96,60 @@ function Main() {
       .catch((e) => {
         if (alive) setStatus(errText(e));
       });
+    getSettings()
+      .then((st) => {
+        if (alive) setSettings(st);
+      })
+      .catch(() => {});
     unlisten.push(onStatus((s) => setStatus(s)));
+    unlisten.push(
+      onSettingsChanged((st) => {
+        setSettings(st);
+        refreshAllRef.current();
+      }),
+    );
+    unlisten.push(
+      onAskTray(() => {
+        if (askingTray.current) return;
+        askingTray.current = true;
+        chooseRef
+          .current({
+            title: "閉じるときの動作",
+            message: "ウィンドウを閉じたあとも、タスクトレイに残してログの取り込みを続けますか？ あとから設定で変更できます。",
+            buttons: [
+              { id: "stay", label: "トレイに残す", primary: true },
+              { id: "exit", label: "終了する" },
+              { id: "cancel", label: "キャンセル" },
+            ],
+            cancelId: "cancel",
+          })
+          .then((id) => {
+            if (id === "stay" || id === "exit") return answerTrayChoice(id === "stay");
+          })
+          .catch((e) => showError(errText(e)))
+          .finally(() => {
+            askingTray.current = false;
+          });
+      }),
+    );
+    unlisten.push(
+      onUpdateReady(({ version }) => {
+        chooseRef
+          .current({
+            title: "更新",
+            message: `新しいバージョン ${version} をダウンロードしました。再起動して更新しますか？`,
+            buttons: [
+              { id: "apply", label: "再起動して更新", primary: true },
+              { id: "later", label: "あとで" },
+            ],
+            cancelId: "later",
+          })
+          .then((id) => {
+            if (id === "apply") return applyUpdate();
+          })
+          .catch((e) => showError(errText(e)));
+      }),
+    );
     unlisten.push(onImporting((b) => setImporting(b)));
     unlisten.push(
       onImportFinished(({ changed, automatic }) => {
@@ -107,6 +182,20 @@ function Main() {
     void sessions.current?.selectVisitById(visitId);
   };
 
+  const navigateToPlayer = (_playerId: number, displayName: string) => {
+    flushSync(() => setTab("players"));
+    players.current?.searchFor(displayName);
+  };
+
+  const navigateToPhotos = (filter: PhotoFilter) => {
+    flushSync(() => setTab("photos"));
+    photos.current?.showFor(filter);
+  };
+  const navigateToPhotosRef = useRef(navigateToPhotos);
+  navigateToPhotosRef.current = navigateToPhotos;
+  // Stable context value so tabs using it do not re-render on every App render.
+  const photoNav = useMemo(() => ({ showPhotos: (f: PhotoFilter) => navigateToPhotosRef.current(f) }), []);
+
   const onTabKey = (e: React.KeyboardEvent, i: number) => {
     let n = i;
     if (e.key === "ArrowRight") n = (i + 1) % TABS.length;
@@ -123,13 +212,14 @@ function Main() {
       id={`panel-${id}`}
       role="tabpanel"
       aria-labelledby={`tab-${id}`}
-      className={`tabpanel${tab === id ? " active" : ""}${id === "settings" ? " scroll" : ""}`}
+      className={`tabpanel${tab === id ? " active" : ""}`}
     >
       {content}
     </div>
   );
 
   return (
+    <PhotoNavContext.Provider value={photoNav}>
     <div className="app">
       <div className="toolbar">
         <button disabled={importing} onClick={() => importNow().catch((e) => showError(errText(e)))}>
@@ -171,14 +261,27 @@ function Main() {
         ))}
       </div>
       <div className="tabbody">
+        {panel(
+          "photos",
+          <PhotosTab
+            ref={photos}
+            from={from}
+            to={to}
+            active={tab === "photos"}
+            dayStartHour={settings?.DayStartHour ?? 0}
+            photoFolders={settings?.PhotoFolders ?? []}
+            onNavigateVisit={navigateToVisit}
+            onNavigatePlayer={navigateToPlayer}
+          />,
+        )}
         {panel("players", <PlayersTab ref={players} from={from} to={to} onNavigate={navigateToVisit} />)}
-        {panel("sessions", <SessionsTab ref={sessions} from={from} to={to} />)}
+        {panel("sessions", <SessionsTab ref={sessions} from={from} to={to} onNavigatePlayer={navigateToPlayer} />)}
         {panel("urls", <UrlsTab ref={urls} from={from} to={to} onNavigate={navigateToVisit} />)}
         {panel("avatars", <AvatarsTab ref={avatars} from={from} to={to} onNavigate={navigateToVisit} />)}
         {panel("notifications", <NotificationsTab ref={notifications} from={from} to={to} onNavigate={navigateToVisit} />)}
         {panel("logs", <LogsTab ref={logs} from={from} to={to} onNavigate={navigateToVisit} />)}
-        {panel("settings", <SettingsTab onDbPathChanged={() => refreshAllRef.current()} />)}
       </div>
     </div>
+    </PhotoNavContext.Provider>
   );
 }

@@ -3,21 +3,23 @@
 use std::time::Duration;
 
 use chrono::{Local, NaiveDate};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 use vrclogger_core::data::dtos::*;
+use vrclogger_core::data::photo_query::{DayCount, PhotoDetail, PhotoFilter, PhotoRow, PhotoService};
 use vrclogger_core::data::query::QueryService;
 
 use crate::app::{self, AppState, StatusDto};
 use crate::settings::Settings;
+use crate::{maintenance, update};
 
-type CmdResult<T> = Result<T, String>;
+pub(crate) type CmdResult<T> = Result<T, String>;
 
 const ALL_LABEL: &str = "(全て)";
 
-fn parse_date(s: Option<String>) -> CmdResult<Option<NaiveDate>> {
+pub(crate) fn parse_date(s: Option<String>) -> CmdResult<Option<NaiveDate>> {
     match s.as_deref().map(str::trim) {
         None | Some("") => Ok(None),
         Some(v) => NaiveDate::parse_from_str(v, "%Y-%m-%d")
@@ -82,6 +84,7 @@ pub async fn save_settings(
     start_with_windows: bool,
 ) -> CmdResult<String> {
     let db_changed;
+    let photos_changed;
     {
         let mut cur = state.settings.lock().unwrap();
         db_changed = cur.db_path != settings.db_path;
@@ -90,11 +93,27 @@ pub async fn save_settings(
         cur.db_path = settings.db_path;
         cur.auto_import_interval_minutes = settings.auto_import_interval_minutes.max(0);
         cur.minimize_to_tray = settings.minimize_to_tray;
+        // Saving from the settings window is an explicit choice about staying in the tray.
+        cur.tray_choice_made = true;
         cur.raw_log_retention_days = settings.raw_log_retention_days.max(0);
         cur.raw_log_noise_patterns =
             settings.raw_log_noise_patterns.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-        // LastViewerExportFolder is owned by the backend (export dialog); keep the stored value.
+        let new_photo_folders: Vec<String> =
+            settings.photo_folders.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        photos_changed = cur.photo_folders != new_photo_folders;
+        cur.photo_folders = new_photo_folders;
+        cur.day_start_hour = settings.day_start_hour.min(23);
+        cur.show_first_met = settings.show_first_met;
+        cur.reunion_days = settings.reunion_days.max(0);
+        cur.auto_vacuum = settings.auto_vacuum;
+        cur.auto_vacuum_min_db_mb = settings.auto_vacuum_min_db_mb.max(0);
+        cur.backup_folder = settings.backup_folder.trim().to_string();
+        cur.backup_interval_days = settings.backup_interval_days.max(0);
+        cur.backup_keep_count = settings.backup_keep_count.max(1);
+        cur.update_feed = settings.update_feed.trim().to_string();
+        // LastViewerExportFolder and LastBackupAt are owned by the backend; keep the stored values.
         cur.save()?;
+        let _ = app.emit("settings-changed", cur.clone());
     }
     if db_changed {
         if let Err(e) = app::reopen_query_db(&app) {
@@ -104,6 +123,10 @@ pub async fn save_settings(
     }
     app::reset_prune(&app);
     app::restart_timer(&app);
+    if photos_changed {
+        *state.next_photo_scan_at.lock().unwrap() = None;
+        tauri::async_runtime::spawn(app::run_import(app.clone(), false));
+    }
 
     let al = app.autolaunch();
     let result = (|| -> Result<(), String> {
@@ -127,13 +150,51 @@ pub async fn default_noise_patterns() -> CmdResult<Vec<String>> {
 }
 
 #[tauri::command]
-pub async fn pick_folder(app: AppHandle) -> CmdResult<Option<String>> {
+pub async fn pick_folder(app: AppHandle, title: Option<String>) -> CmdResult<Option<String>> {
+    let title = title.unwrap_or_else(|| "フォルダを選択".to_string());
     let picked = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog().file().set_title("ログフォルダを選択").blocking_pick_folder()
+        app.dialog().file().set_title(title).blocking_pick_folder()
     })
     .await
     .map_err(|e| e.to_string())?;
     Ok(picked.and_then(|p| p.into_path().ok()).map(|p| p.display().to_string()))
+}
+
+#[tauri::command]
+pub async fn answer_tray_choice(app: AppHandle, state: State<'_, AppState>, stay: bool) -> CmdResult<()> {
+    let saved = {
+        let mut s = state.settings.lock().unwrap();
+        s.minimize_to_tray = stay;
+        s.tray_choice_made = true;
+        s.save()?;
+        s.clone()
+    };
+    let _ = app.emit("settings-changed", saved);
+    if stay {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.hide();
+        }
+    } else {
+        app::exit_app(&app);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn backup_now(app: AppHandle) -> CmdResult<()> {
+    maintenance::backup_now(app, false).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn check_update(app: AppHandle) -> CmdResult<()> {
+    update::check(app, true).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn apply_update(app: AppHandle) -> CmdResult<()> {
+    update::apply(&app)
 }
 
 #[tauri::command]
@@ -298,4 +359,108 @@ pub async fn search_moderation(
 ) -> CmdResult<Vec<ModerationRow>> {
     let (from, to) = (parse_date(from)?, parse_date(to)?);
     with_query(&state, |q| q.search_moderation_events(&term, from, to))
+}
+
+// ---- Photos ----
+
+fn with_photos<T>(
+    state: &AppState,
+    f: impl FnOnce(&PhotoService) -> vrclogger_core::Result<T>,
+) -> CmdResult<T> {
+    let guard = state.query.lock().unwrap();
+    let conn = guard.as_ref().ok_or_else(|| "データベースを開けません。設定の DB パスを確認してください。".to_string())?;
+    f(&PhotoService::new(conn)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn rescan_photos(app: AppHandle) -> CmdResult<()> {
+    app::run_import(app, false).await;
+    Ok(())
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn photos(
+    state: State<'_, AppState>,
+    from: Option<String>,
+    to: Option<String>,
+    world_ref_id: Option<i64>,
+    player_id: Option<i64>,
+    visit_id: Option<i64>,
+    favorite_only: bool,
+    before_time: Option<String>,
+    before_id: Option<i64>,
+    limit: usize,
+) -> CmdResult<Vec<PhotoRow>> {
+    let filter = PhotoFilter {
+        from: parse_date(from)?,
+        to: parse_date(to)?,
+        world_ref_id,
+        player_id,
+        visit_id,
+        favorite_only,
+        include_missing: false,
+    };
+    let before = match (before_time, before_id) {
+        (Some(t), Some(id)) => Some((t, id)),
+        _ => None,
+    };
+    with_photos(&state, |p| p.photos(&filter, before, limit.clamp(1, 500)))
+}
+
+#[tauri::command]
+pub async fn photo_days(
+    state: State<'_, AppState>,
+    from: Option<String>,
+    to: Option<String>,
+    world_ref_id: Option<i64>,
+    player_id: Option<i64>,
+    favorite_only: bool,
+) -> CmdResult<Vec<DayCount>> {
+    let filter = PhotoFilter {
+        from: parse_date(from)?,
+        to: parse_date(to)?,
+        world_ref_id,
+        player_id,
+        favorite_only,
+        ..Default::default()
+    };
+    let hour = state.settings.lock().unwrap().day_start_hour;
+    with_photos(&state, |p| p.photo_days(&filter, hour))
+}
+
+#[tauri::command]
+pub async fn photos_for_visit(state: State<'_, AppState>, visit_id: i64) -> CmdResult<Vec<PhotoRow>> {
+    with_photos(&state, |p| p.photos_for_visit(visit_id))
+}
+
+#[tauri::command]
+pub async fn photo_detail(state: State<'_, AppState>, id: i64) -> CmdResult<Option<PhotoDetail>> {
+    with_photos(&state, |p| p.photo_detail(id))
+}
+
+#[tauri::command]
+pub async fn set_photo_favorite(state: State<'_, AppState>, id: i64, favorite: bool) -> CmdResult<()> {
+    with_photos(&state, |p| p.set_favorite(id, favorite))
+}
+
+#[tauri::command]
+pub async fn photo_count(state: State<'_, AppState>) -> CmdResult<i64> {
+    with_photos(&state, |p| p.count())
+}
+
+fn photo_path_of(state: &AppState, id: i64) -> CmdResult<String> {
+    with_photos(state, |p| p.photo_path(id))?.ok_or_else(|| "ファイルが見つかりません".to_string())
+}
+
+#[tauri::command]
+pub async fn reveal_photo(app: AppHandle, state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    let path = photo_path_of(&state, id)?;
+    app.opener().reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn open_photo(app: AppHandle, state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    let path = photo_path_of(&state, id)?;
+    app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }

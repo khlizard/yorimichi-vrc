@@ -47,3 +47,20 @@ fn ts_escape_like_and_duration_formats() {
     assert_eq!(format_duration("2026-06-23 22:00:00", "2026-06-23 21:00:00"), "");
     assert_eq!(format_duration("x", "2026-06-23 21:00:00"), "");
 }
+
+#[test]
+fn schema_version_and_backup() {
+    let fx = Fixture::new();
+    assert_eq!(db::schema_version(&fx.conn).unwrap(), db::SCHEMA_VERSION);
+    db::ensure_created(&fx.conn).unwrap(); // idempotent
+    assert_eq!(db::schema_version(&fx.conn).unwrap(), db::SCHEMA_VERSION);
+    assert!(db::reclaimable_bytes(&fx.conn).unwrap() >= 0);
+
+    fx.conn.execute_batch("CREATE TABLE t(x INTEGER); INSERT INTO t VALUES (1),(2),(3);").unwrap();
+    let dest = fx.dir.path().join("backup.db");
+    db::backup_into(&fx.conn, &dest).unwrap();
+    assert!(dest.exists());
+    let copy = rusqlite::Connection::open(&dest).unwrap();
+    let n: i64 = copy.query_row("SELECT count(*) FROM t", [], |r| r.get(0)).unwrap();
+    assert_eq!(n, 3);
+}

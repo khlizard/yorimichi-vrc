@@ -18,6 +18,7 @@
 pub mod data;
 pub mod export;
 pub mod parsing;
+pub mod photos;
 
 /// Error type returned by the public API.
 #[derive(Debug, thiserror::Error)]
@@ -29,6 +30,12 @@ pub enum Error {
     /// The embedded HTML template is malformed (e.g. placeholder missing or duplicated).
     #[error("{0}")]
     Template(String),
+    /// A photo could not be decoded or a thumbnail could not be encoded.
+    #[error("image error: {0}")]
+    Image(String),
+    /// A caller-supplied value was rejected (e.g. an empty tag or album name).
+    #[error("{0}")]
+    Invalid(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1,5 +1,6 @@
 //! Shared state and the long-running operations (import, vacuum, export, timer, window helpers).
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -8,17 +9,17 @@ use std::time::{Duration, Instant};
 use chrono::Local;
 use rusqlite::Connection;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 use vrclogger_core::data::db;
 use vrclogger_core::data::import::ImportService;
 use vrclogger_core::export;
 use vrclogger_core::parsing::ParseOptions;
 
+use crate::maintenance::should_vacuum;
+use crate::photos::{self, PhotosChanged};
 use crate::settings::{settings_dir, Settings};
 
-/// Rows pruned in one run above which the DB is compacted automatically.
-const VACUUM_THRESHOLD_ROWS: usize = 10_000;
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
 
 pub struct AppState {
@@ -30,6 +31,14 @@ pub struct AppState {
     pub exit_requested: AtomicBool,
     pub status: Mutex<String>,
     pub timer_generation: AtomicU64,
+    /// Downloaded Velopack update waiting for the user to restart.
+    pub pending_update: Mutex<Option<velopack::UpdateInfo>>,
+    pub next_photo_scan_at: Mutex<Option<Instant>>,
+    /// Bounds concurrent thumbnail generation.
+    pub thumb_gate: tokio::sync::Semaphore,
+    /// Thumbnail keys that failed to generate this session (not retried).
+    pub thumb_failed: Mutex<HashSet<String>>,
+    pub thumb_generation: AtomicU64,
 }
 
 impl AppState {
@@ -42,6 +51,11 @@ impl AppState {
             exit_requested: AtomicBool::new(false),
             status: Mutex::new(String::new()),
             timer_generation: AtomicU64::new(0),
+            pending_update: Mutex::new(None),
+            next_photo_scan_at: Mutex::new(None),
+            thumb_gate: tokio::sync::Semaphore::new(3),
+            thumb_failed: Mutex::new(HashSet::new()),
+            thumb_generation: AtomicU64::new(0),
         }
     }
 }
@@ -52,6 +66,10 @@ pub struct StatusDto {
     pub status: String,
     pub importing: bool,
     pub db_path: String,
+    pub db_size_bytes: i64,
+    pub reclaimable_bytes: i64,
+    pub vacuum_recommended: bool,
+    pub version: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -82,8 +100,25 @@ fn set_importing(app: &AppHandle, value: bool) {
     let _ = app.emit("importing", value);
 }
 
+pub fn release_importing(app: &AppHandle) {
+    set_importing(app, false);
+}
+
+/// (size, reclaimable) in bytes from the query connection; zeros when it is unavailable.
+pub fn db_sizes(app: &AppHandle) -> (i64, i64) {
+    let st = app.state::<AppState>();
+    let guard = st.query.lock().unwrap();
+    match guard.as_ref() {
+        Some(conn) => (
+            db::file_size_bytes(conn).unwrap_or(0),
+            db::reclaimable_bytes(conn).unwrap_or(0),
+        ),
+        None => (0, 0),
+    }
+}
+
 /// Takes the importing flag; false if an import/vacuum is already running.
-fn try_begin(app: &AppHandle) -> bool {
+pub fn try_begin(app: &AppHandle) -> bool {
     let st = app.state::<AppState>();
     if st.importing.swap(true, Ordering::SeqCst) {
         return false;
@@ -100,7 +135,17 @@ pub fn status_dto(app: &AppHandle) -> StatusDto {
     let st = app.state::<AppState>();
     let db_path = st.settings.lock().unwrap().resolved_db_path().display().to_string();
     let status = st.status.lock().unwrap().clone();
-    StatusDto { status, importing: st.importing.load(Ordering::SeqCst), db_path }
+    let min_mb = st.settings.lock().unwrap().auto_vacuum_min_db_mb;
+    let (db_size_bytes, reclaimable_bytes) = db_sizes(app);
+    StatusDto {
+        status,
+        importing: st.importing.load(Ordering::SeqCst),
+        db_path,
+        db_size_bytes,
+        reclaimable_bytes,
+        vacuum_recommended: should_vacuum(db_size_bytes, reclaimable_bytes, min_mb),
+        version: app.package_info().version.to_string(),
+    }
 }
 
 pub fn update_title(app: &AppHandle) {
@@ -134,6 +179,26 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
+/// Shows (or creates) the settings window.
+pub fn open_settings(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("settings") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return;
+    }
+    let built = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?window=settings".into()))
+        .title("設定 — VrcLogger")
+        .inner_size(760.0, 780.0)
+        .min_inner_size(560.0, 480.0)
+        .resizable(true)
+        .center()
+        .build();
+    if let Ok(w) = built {
+        let _ = w.remove_menu();
+    }
+}
+
 pub fn exit_app(app: &AppHandle) {
     app.state::<AppState>().exit_requested.store(true, Ordering::SeqCst);
     app.exit(0);
@@ -144,10 +209,17 @@ pub async fn run_import(app: AppHandle, automatic: bool) {
     if !try_begin(&app) {
         return;
     }
-    let (folders, db_path, noise, retention) = {
+    let (folders, db_path, noise, retention, photo_folders) = {
         let s = app.state::<AppState>().settings.lock().unwrap().clone();
-        (s.resolved_log_folders(), s.resolved_db_path(), s.raw_log_noise_patterns.clone(), s.raw_log_retention_days)
+        (
+            s.resolved_log_folders(),
+            s.resolved_db_path(),
+            s.raw_log_noise_patterns.clone(),
+            s.raw_log_retention_days,
+            s.resolved_photo_folders(),
+        )
     };
+    let do_scan = !photo_folders.is_empty() && photos::scan_due(&app, automatic);
     let do_prune = app
         .state::<AppState>()
         .next_prune_at
@@ -156,7 +228,7 @@ pub async fn run_import(app: AppHandle, automatic: bool) {
         .is_none_or(|t| Instant::now() >= t);
 
     let app2 = app.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || -> Result<bool, String> {
+    let result = tauri::async_runtime::spawn_blocking(move || -> Result<(bool, PhotosChanged), String> {
         // Import uses its own connection so query commands never collide with it.
         let conn = open_db(&db_path).map_err(|e| e.to_string())?;
         let svc = ImportService::with_options(&conn, ParseOptions::new(noise.clone()));
@@ -179,20 +251,16 @@ pub async fn run_import(app: AppHandle, automatic: bool) {
                     ),
                 );
             }
-            if pruned_total >= VACUUM_THRESHOLD_ROWS {
-                set_status(&app2, "DB 最適化中 (VACUUM)…");
-                let before = db::file_size_bytes(&conn).map_err(|e| e.to_string())?;
-                db::vacuum(&conn).map_err(|e| e.to_string())?;
-                let after = db::file_size_bytes(&conn).map_err(|e| e.to_string())?;
-                set_status(&app2, format!("DB 最適化完了: {} MB → {} MB", before / 1024 / 1024, after / 1024 / 1024));
-            }
         }
-        Ok(imported || pruned_total > 0)
+        let photo_changes = photos::scan_step(&app2, &conn, &photo_folders, do_scan, imported);
+        Ok((imported || pruned_total > 0, photo_changes))
     })
     .await;
 
+    let mut photo_changes = PhotosChanged::default();
     let changed = match result {
-        Ok(Ok(changed)) => {
+        Ok(Ok((changed, pc))) => {
+            photo_changes = pc;
             if do_prune {
                 *app.state::<AppState>().next_prune_at.lock().unwrap() = Some(Instant::now() + PRUNE_INTERVAL);
             }
@@ -209,6 +277,7 @@ pub async fn run_import(app: AppHandle, automatic: bool) {
     };
     set_importing(&app, false);
     let _ = app.emit("import-finished", ImportFinished { changed, automatic });
+    photos::emit_changed(&app, &photo_changes);
 }
 
 pub async fn reimport_all(app: AppHandle) {

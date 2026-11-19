@@ -17,11 +17,11 @@ pub const DEFAULT_PLAYER_LIMIT: i64 = 200;
 /// Default (and maximum used by the UI) row limit of the 2000-row searches in the C# app.
 pub const DEFAULT_RAW_LIMIT: i64 = 2000;
 
-type Param<'a> = (&'a str, &'a dyn ToSql);
+pub(crate) type Param<'a> = (&'a str, &'a dyn ToSql);
 
 /// Prepares `sql` and binds only the named parameters it actually uses
 /// (Dapper ignored extra properties; rusqlite would reject them).
-fn query_rows<T>(
+pub(crate) fn query_rows<T>(
     conn: &Connection,
     sql: &str,
     params: &[Param<'_>],
@@ -41,7 +41,7 @@ fn query_rows<T>(
     Ok(out)
 }
 
-fn date_filter(column: &str, from: Option<NaiveDate>, to: Option<NaiveDate>) -> (String, String, String) {
+pub(crate) fn date_filter(column: &str, from: Option<NaiveDate>, to: Option<NaiveDate>) -> (String, String, String) {
     (
         format!(" AND {column} >= @from AND {column} < @to"),
         from.map(|d| db::ts(d.and_time(NaiveTime::MIN))).unwrap_or_else(|| "0000".into()),
@@ -49,6 +49,14 @@ fn date_filter(column: &str, from: Option<NaiveDate>, to: Option<NaiveDate>) -> 
             .unwrap_or_else(|| "9999".into()),
     )
 }
+
+pub(crate) const PLAYER_SEARCH_SELECT: &str = r"
+            SELECT p.id, p.user_id AS UserId, p.display_name AS DisplayName, p.is_local AS IsLocal,
+                   (SELECT group_concat(pn.display_name, ', ') FROM player_names pn
+                     WHERE pn.player_id = p.id AND pn.display_name <> p.display_name) AS OtherNames,
+                   (SELECT count(*) FROM encounters e WHERE e.player_id = p.id) AS EncounterCount,
+                   (SELECT max(e.join_time) FROM encounters e WHERE e.player_id = p.id) AS LastSeen
+            FROM players p";
 
 fn like_pattern(term: &str) -> String {
     format!("%{}%", db::escape_like(term))
@@ -58,7 +66,7 @@ fn is_blank(s: &str) -> bool {
     s.trim().is_empty()
 }
 
-fn player_hit(r: &Row<'_>) -> rusqlite::Result<PlayerHit> {
+pub(crate) fn player_hit(r: &Row<'_>) -> rusqlite::Result<PlayerHit> {
     let last_seen: Option<String> = r.get(6)?;
     Ok(PlayerHit {
         id: r.get(0)?,
@@ -115,19 +123,16 @@ impl<'a> QueryService<'a> {
     /// The C# defaults were `offset = 0`, `limit = 200` ([`DEFAULT_PLAYER_LIMIT`]).
     pub fn search_players(&self, term: &str, offset: i64, limit: i64) -> Result<Vec<PlayerHit>> {
         let pattern = like_pattern(term);
-        Ok(query_rows(
-            self.conn,
-            r"
-            SELECT p.id, p.user_id AS UserId, p.display_name AS DisplayName, p.is_local AS IsLocal,
-                   (SELECT group_concat(pn.display_name, ', ') FROM player_names pn
-                     WHERE pn.player_id = p.id AND pn.display_name <> p.display_name) AS OtherNames,
-                   (SELECT count(*) FROM encounters e WHERE e.player_id = p.id) AS EncounterCount,
-                   (SELECT max(e.join_time) FROM encounters e WHERE e.player_id = p.id) AS LastSeen
-            FROM players p
+        let sql = format!(
+            r"{PLAYER_SEARCH_SELECT}
             WHERE p.id IN (SELECT player_id FROM player_names WHERE display_name LIKE @pattern ESCAPE '\')
             ORDER BY EncounterCount DESC, p.id
             LIMIT @limit OFFSET @offset
-            ",
+            "
+        );
+        Ok(query_rows(
+            self.conn,
+            &sql,
             &[("@pattern", &pattern), ("@limit", &limit), ("@offset", &offset)],
             player_hit,
         )?)
@@ -193,8 +198,9 @@ impl<'a> QueryService<'a> {
             r"
             SELECT v.id, v.world_name AS WorldName, v.instance_id AS InstanceId, v.location AS Location,
                    v.join_time AS JoinTime, v.leave_time AS LeaveTime, v.ended_cleanly AS EndedCleanly,
-                   (SELECT count(*) FROM encounters e WHERE e.visit_id = v.id) AS PlayerCount
-            FROM visits v
+                   (SELECT count(*) FROM encounters e WHERE e.visit_id = v.id) AS PlayerCount,
+                   w.world_id, v.world_id
+            FROM visits v LEFT JOIN worlds w ON w.id = v.world_id
             WHERE 1=1{clause}{world_clause}
             ORDER BY v.join_time DESC
             "
@@ -217,6 +223,8 @@ impl<'a> QueryService<'a> {
                     leave_time,
                     ended_cleanly: r.get(6)?,
                     player_count: r.get(7)?,
+                    world_id: r.get(8)?,
+                    world_ref_id: r.get(9)?,
                 })
             },
         )?)
@@ -231,7 +239,8 @@ impl<'a> QueryService<'a> {
                    (SELECT a.avatar_name FROM avatar_events a WHERE a.visit_id = v.id AND a.display_name = e.display_name
                      ORDER BY a.event_time DESC, a.id DESC LIMIT 1) AS AvatarName,
                    (SELECT a.size_mb FROM avatar_events a WHERE a.visit_id = v.id AND a.display_name = e.display_name AND a.size_mb IS NOT NULL
-                     ORDER BY a.event_time DESC, a.id DESC LIMIT 1) AS AvatarSizeMb
+                     ORDER BY a.event_time DESC, a.id DESC LIMIT 1) AS AvatarSizeMb,
+                   p.user_id AS UserId
             FROM encounters e JOIN players p ON p.id = e.player_id JOIN visits v ON v.id = e.visit_id
             WHERE e.visit_id = @visitId
             ORDER BY e.join_time
@@ -250,6 +259,7 @@ impl<'a> QueryService<'a> {
                     ended_cleanly: r.get(5)?,
                     avatar_name: r.get(6)?,
                     avatar_size_mb: r.get(7)?,
+                    user_id: r.get(8)?,
                 })
             },
         )?)

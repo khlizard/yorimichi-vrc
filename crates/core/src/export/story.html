@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><!--__STORY_TITLE__--></title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html { background: #16171a; }
+body {
+  margin: 0;
+  padding: 0 1.25rem;
+  background: #16171a;
+  color: #e8e8ea;
+  font-family: "Yu Gothic UI", "Hiragino Sans", "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+}
+main { max-width: 1100px; margin: 0 auto; padding: 3rem 0 2rem; }
+header { margin-bottom: 2.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid #2c2e33; }
+h1 { margin: 0 0 .35rem; font-size: 1.6rem; font-weight: 600; line-height: 1.35; }
+.sub { margin: 0; color: #a3a5ab; font-size: .9rem; font-variant-numeric: tabular-nums; }
+.desc { margin: .9rem 0 0; white-space: pre-wrap; }
+.empty { color: #a3a5ab; }
+img { display: block; max-width: 100%; height: auto; border-radius: 0; }
+figure { margin: 0 0 1.5rem; }
+figcaption { margin-top: .35rem; color: #a3a5ab; font-size: .85rem; font-variant-numeric: tabular-nums; }
+
+/* Day export: a 1px rail with the start time beside each stop. */
+.rail .stop {
+  position: relative;
+  margin-left: 4.5rem;
+  padding: 0 0 2.25rem 1.5rem;
+  border-left: 1px solid #2c2e33;
+}
+.rail .stop:last-child { padding-bottom: .5rem; }
+.rail .stop::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .85em;
+  width: .6rem;
+  height: 1px;
+  background: #a3a5ab;
+}
+.when {
+  position: absolute;
+  left: -4.5rem;
+  top: 0;
+  width: 3.75rem;
+  text-align: right;
+  color: #a3a5ab;
+  font-size: .9rem;
+  font-variant-numeric: tabular-nums;
+}
+.stop h2 { margin: 0; font-size: 1.15rem; font-weight: 600; line-height: 1.7; }
+.meta, .who { margin: 0; color: #a3a5ab; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.stop > :last-child { margin-bottom: 0; }
+.stop h2 + .meta, .meta + .who, .who + figure, .meta + figure, h2 + figure { margin-top: .5rem; }
+.stop figure:first-child { margin-top: 0; }
+.stop .meta + figure, .stop .who + figure { margin-top: .9rem; }
+
+/* Album export: one photo per row. */
+.album figure { margin-bottom: 2rem; }
+
+footer {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.25rem 0 3rem;
+  border-top: 1px solid #2c2e33;
+  color: #a3a5ab;
+  font-size: .8rem;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+  body { padding: 0 .75rem; }
+  main { padding-top: 1.75rem; }
+  .rail .stop { margin-left: 3.5rem; padding-left: 1rem; }
+  .when { left: -3.5rem; width: 2.9rem; font-size: .8rem; }
+}
+</style>
+</head>
+<body>
+<main>
+<!--__STORY_BODY__-->
+</main>
+<footer>VrcLogger で書き出し (<!--__STORY_GENERATED__-->)</footer>
+</body>
+</html>

@@ -25,6 +25,11 @@ const columns: Column<EncounterRow>[] = [
   { header: "インスタンス", flex: 1, text: (r) => r.instanceId },
 ];
 
+export interface PlayersHandle extends TabHandle {
+  /** Search players by display name (used when jumping from a photo). */
+  searchFor(name: string): void;
+}
+
 export function PlayersTab({
   from,
   to,
@@ -34,7 +39,7 @@ export function PlayersTab({
   from: string | null;
   to: string | null;
   onNavigate: (visitId: number | null) => void;
-  ref?: Ref<TabHandle>;
+  ref?: Ref<PlayersHandle>;
 }) {
   const { showError } = useDialog();
   const range = useLatest({ from, to });
@@ -118,7 +123,16 @@ export function PlayersTab({
     void reload();
   };
 
-  useImperativeHandle(ref, () => ({ refresh: () => void reload(), loadedCount: () => playersRef.current.length }));
+  useImperativeHandle(ref, () => ({
+    refresh: () => void reload(),
+    loadedCount: () => playersRef.current.length,
+    searchFor: (name: string) => {
+      setText(name);
+      activeTerm.current = name.trim();
+      selectedIdRef.current = null;
+      void reload();
+    },
+  }));
 
   return (
     <div className="split">

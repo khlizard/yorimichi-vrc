@@ -7,6 +7,8 @@ import { UrlGrid } from "../components/UrlGrid";
 import { VirtualList, type ListHandle } from "../components/VirtualList";
 import { useLatest } from "../components/hooks";
 import { errText, fmtMb, nullIfBlank, type TabHandle } from "../components/util";
+import { Lightbox } from "../photos/Lightbox";
+import { PhotoStrip, useVisitPhotos } from "../photos/PhotoStrip";
 
 export interface SessionsHandle extends TabHandle {
   /** Select a visit by id (clears the world filter if it is not in the list) and scroll to it. */
@@ -25,10 +27,12 @@ const playerColumns: Column<VisitPlayerRow>[] = [
 export function SessionsTab({
   from,
   to,
+  onNavigatePlayer,
   ref,
 }: {
   from: string | null;
   to: string | null;
+  onNavigatePlayer?: (playerId: number, displayName: string) => void;
   ref?: Ref<SessionsHandle>;
 }) {
   const { showError } = useDialog();
@@ -49,6 +53,13 @@ export function SessionsTab({
   const gen = useRef(0);
   const detailGen = useRef(0);
   const listHandle = useRef<ListHandle>(null);
+  const [visitPhotos, setVisitPhotos] = useVisitPhotos(selectedId);
+  const [lbIndex, setLbIndex] = useState<number | null>(null);
+
+  // A different visit invalidates the open photo view.
+  useEffect(() => {
+    setLbIndex(null);
+  }, [selectedId]);
 
   const loadDetails = async (id: number | null) => {
     const g = ++detailGen.current;
@@ -188,6 +199,7 @@ export function SessionsTab({
             自分を隠す
           </label>
         </div>
+        <PhotoStrip photos={visitPhotos} onOpen={setLbIndex} />
         <div className="grow-box">
           <DataGrid<VisitPlayerRow>
             className="fill"
@@ -204,6 +216,20 @@ export function SessionsTab({
           <UrlGrid className="fill" ariaLabel="URLイベント" rows={urls} withWorld={false} />
         </div>
       </div>
+      {lbIndex !== null && (
+        <Lightbox
+          items={visitPhotos}
+          index={lbIndex}
+          onIndexChange={setLbIndex}
+          onClose={() => setLbIndex(null)}
+          onNavigateVisit={() => setLbIndex(null)}
+          onNavigatePlayer={onNavigatePlayer && ((id, name) => {
+            setLbIndex(null);
+            onNavigatePlayer(id, name);
+          })}
+          onFavoriteChanged={(id, fav) => setVisitPhotos((l) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
+        />
+      )}
     </div>
   );
 }
