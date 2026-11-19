@@ -36,3 +36,12 @@ fn undecodable_file_is_an_error() {
     std::fs::write(&src, b"nope").unwrap();
     assert!(jpeg_bytes(&src, 100, 80).is_err());
 }
+
+/// Manual probe: `PROBE_SRC=<photo> PROBE_OUT=<jpg> cargo test -- --ignored probe_real_file`.
+#[test]
+#[ignore]
+fn probe_real_file() {
+    let src = std::env::var("PROBE_SRC").unwrap();
+    let out = std::env::var("PROBE_OUT").unwrap();
+    make_thumbnail(std::path::Path::new(&src), std::path::Path::new(&out), 400).unwrap();
+}

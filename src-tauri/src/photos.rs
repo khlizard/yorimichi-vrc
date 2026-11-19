@@ -19,6 +19,7 @@ use crate::shell_thumb::shell_thumbnail_jpeg;
 
 pub const SCAN_INTERVAL: Duration = Duration::from_secs(300);
 const THUMB_EDGE: u32 = 400;
+const THUMB_VERSION: &str = "v2";
 const PREGEN_MAX: usize = 2000;
 const PREGEN_PAGE: usize = 200;
 const PREGEN_DELAY: Duration = Duration::from_secs(20);
@@ -97,7 +98,8 @@ fn fnv1a64(data: &[u8]) -> u64 {
 }
 
 pub fn thumb_key(path: &str, file_size: i64, mtime: &str) -> String {
-    format!("{:016x}", fnv1a64(format!("{path}|{file_size}|{mtime}").as_bytes()))
+    // Bump THUMB_VERSION when thumbnails must be regenerated (v2: JPEG decoding fix).
+    format!("{:016x}", fnv1a64(format!("{THUMB_VERSION}|{path}|{file_size}|{mtime}").as_bytes()))
 }
 
 #[derive(Debug, Clone)]

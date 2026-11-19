@@ -13,11 +13,37 @@ fn img_err(e: impl std::fmt::Display) -> Error {
     Error::Image(e.to_string())
 }
 
-fn render(src: &Path, max_edge: u32) -> Result<RgbImage> {
-    let img = image::ImageReader::open(src)?
+/// Decodes a photo. JPEG goes through `jpeg-decoder`: the decoder built into `image` renders
+/// baseline files with one scan per component (non-interleaved) as a green, striped picture.
+fn decode(src: &Path) -> Result<DynamicImage> {
+    let data = std::fs::read(src)?;
+    if data.starts_with(&[0xFF, 0xD8]) {
+        if let Some(img) = decode_jpeg(&data) {
+            return Ok(img);
+        }
+    }
+    image::ImageReader::new(std::io::Cursor::new(data))
         .with_guessed_format()?
         .decode()
-        .map_err(img_err)?;
+        .map_err(img_err)
+}
+
+/// `None` for pixel formats this path does not handle (CMYK, 16-bit) or on a decode error;
+/// the caller then falls back to `image`.
+fn decode_jpeg(data: &[u8]) -> Option<DynamicImage> {
+    let mut decoder = jpeg_decoder::Decoder::new(data);
+    let pixels = decoder.decode().ok()?;
+    let info = decoder.info()?;
+    let (w, h) = (u32::from(info.width), u32::from(info.height));
+    match info.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => RgbImage::from_raw(w, h, pixels).map(DynamicImage::ImageRgb8),
+        jpeg_decoder::PixelFormat::L8 => image::GrayImage::from_raw(w, h, pixels).map(DynamicImage::ImageLuma8),
+        _ => None,
+    }
+}
+
+fn render(src: &Path, max_edge: u32) -> Result<RgbImage> {
+    let img = decode(src)?;
     let img = if img.width() > max_edge || img.height() > max_edge {
         img.thumbnail(max_edge, max_edge)
     } else {
