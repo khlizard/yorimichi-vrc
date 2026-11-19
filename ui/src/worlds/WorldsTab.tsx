@@ -1,3 +1,4 @@
+import { SearchInput } from "../components/SearchInput";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { visits as fetchVisits, type VisitRow } from "../api";
 import { useDialog } from "../components/Dialog";
@@ -221,12 +222,12 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
       <div className="pane" style={{ width: leftWidth }}>
         <div className="searchbar">
           <label htmlFor="worlds-term">検索:</label>
-          <input
+          <SearchInput
             id="worlds-term"
-            type="text"
             placeholder="名前またはメモ"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
+            onClear={() => setTerm("")}
           />
         </div>
         <div className="searchbar">

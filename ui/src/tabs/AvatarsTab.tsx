@@ -2,6 +2,7 @@ import { useImperativeHandle, useRef, useState, type Ref } from "react";
 import { searchAvatars, type AvatarRow } from "../api";
 import { DataGrid, type Column } from "../components/DataGrid";
 import { useDialog } from "../components/Dialog";
+import { SearchInput } from "../components/SearchInput";
 import { useLatest } from "../components/hooks";
 import { errText, fmtMb, numText, type TabHandle } from "../components/util";
 
@@ -47,13 +48,17 @@ export function AvatarsTab({
   return (
     <div className="tab-col">
       <div className="searchbar">
-        <input
-          type="text"
+        <SearchInput
           className="grow"
           aria-label="アバター検索"
           title="アバター名またはプレイヤー名"
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onClear={() => {
+            setText("");
+            textRef.current = "";
+            void search();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") void search();
           }}

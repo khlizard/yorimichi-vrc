@@ -2,6 +2,7 @@ import { useImperativeHandle, useRef, useState, type Ref } from "react";
 import { ALL, searchUrls, type UrlHit } from "../api";
 import { useDialog } from "../components/Dialog";
 import { UrlGrid } from "../components/UrlGrid";
+import { SearchInput } from "../components/SearchInput";
 import { useLatest } from "../components/hooks";
 import { errText, nullIfAll, type TabHandle } from "../components/util";
 
@@ -47,12 +48,16 @@ export function UrlsTab({
   return (
     <div className="tab-col">
       <div className="searchbar">
-        <input
-          type="text"
+        <SearchInput
           className="grow"
           aria-label="URL 検索"
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onClear={() => {
+            setText("");
+            textRef.current = "";
+            void search();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") void search();
           }}

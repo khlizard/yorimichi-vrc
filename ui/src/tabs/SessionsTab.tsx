@@ -1,3 +1,4 @@
+import { SearchInput } from "../components/SearchInput";
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import {
   getSettings,
@@ -249,7 +250,12 @@ export function SessionsTab({
       <div className="pane" style={{ width: leftWidth }}>
         <div className="searchbar">
           <label htmlFor="sessions-world">ワールド名:</label>
-          <input id="sessions-world" type="text" value={worldText} onChange={(e) => setWorldText(e.target.value)} />
+          <SearchInput
+            id="sessions-world"
+            value={worldText}
+            onChange={(e) => setWorldText(e.target.value)}
+            onClear={() => setWorldText("")}
+          />
         </div>
         <VirtualList<VisitRow>
           ref={listHandle}

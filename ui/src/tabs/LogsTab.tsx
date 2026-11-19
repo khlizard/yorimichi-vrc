@@ -2,6 +2,7 @@ import { useImperativeHandle, useRef, useState, type Ref } from "react";
 import { ALL, RAW_PAGE_SIZE, searchRawEvents, type RawEventHit } from "../api";
 import { DataGrid, type Column } from "../components/DataGrid";
 import { useDialog } from "../components/Dialog";
+import { SearchInput } from "../components/SearchInput";
 import { useLatest } from "../components/hooks";
 import { errText, nullIfAll, type TabHandle } from "../components/util";
 
@@ -88,12 +89,16 @@ export function LogsTab({
   return (
     <div className="tab-col">
       <div className="searchbar">
-        <input
-          type="text"
+        <SearchInput
           className="grow"
           aria-label="生ログ検索"
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onClear={() => {
+            setText("");
+            textRef.current = "";
+            search();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") search();
           }}

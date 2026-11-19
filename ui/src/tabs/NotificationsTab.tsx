@@ -10,6 +10,7 @@ import {
 import { DataGrid, type Column } from "../components/DataGrid";
 import { useDialog } from "../components/Dialog";
 import { Splitter } from "../components/Splitter";
+import { SearchInput } from "../components/SearchInput";
 import { useLatest } from "../components/hooks";
 import { errText, nullIfAll, type TabHandle } from "../components/util";
 
@@ -82,12 +83,16 @@ export function NotificationsTab({
   return (
     <div className="tab-col">
       <div className="searchbar">
-        <input
-          type="text"
+        <SearchInput
           className="grow"
           aria-label="通知検索"
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onClear={() => {
+            setText("");
+            textRef.current = "";
+            void search();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") void search();
           }}

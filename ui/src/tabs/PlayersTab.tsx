@@ -14,6 +14,7 @@ import { VirtualList } from "../components/VirtualList";
 import { useLatest } from "../components/hooks";
 import { errText, fmtMb, type TabHandle } from "../components/util";
 import { playerMarks, playerProfile, playersByTag, listTags, type PlayerMark, type PlayerProfile, type TagCount } from "../libraryApi";
+import { SearchInput } from "../components/SearchInput";
 import { PlayerProfilePanel } from "../players/PlayerProfilePanel";
 import { RowMarks } from "../players/tagUi";
 
@@ -220,11 +221,15 @@ export function PlayersTab({
     <div className="split">
       <div className="pane" style={{ width }}>
         <div className="searchbar">
-          <input
-            type="text"
+          <SearchInput
             aria-label="プレイヤー検索"
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onClear={() => {
+              setText("");
+              textRef.current = "";
+              search();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") search();
             }}
