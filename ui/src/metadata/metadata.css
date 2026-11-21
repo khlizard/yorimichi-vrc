@@ -9,11 +9,6 @@
   max-height: 70vh;
   overflow: auto;
 }
-.md-range {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 .md-modes {
   display: flex;
   flex-direction: column;

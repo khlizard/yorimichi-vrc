@@ -8,3 +8,24 @@
   padding: 3px 10px;
   white-space: nowrap;
 }
+
+/* Back / Forward, left of the tabs. The bar carries the line the active tab sits on. */
+.tabbar {
+  display: flex;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+}
+.tabbar .tabstrip {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-bottom: none;
+}
+.histnav {
+  display: flex;
+  gap: 2px;
+  padding: 4px 0 3px 6px;
+}
+.histnav button {
+  min-width: 28px;
+  padding: 1px 6px;
+}

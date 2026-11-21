@@ -466,3 +466,67 @@ pub async fn open_photo(app: AppHandle, state: State<'_, AppState>, id: i64) -> 
     let path = photo_path_of(&state, id)?;
     app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
+
+/// File facts for the photo info dialog. Only attributes are read (never the content).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoFileInfo {
+    pub path: String,
+    pub folder: String,
+    pub exists: bool,
+    pub online_only: bool,
+    pub size: Option<u64>,
+    /// Local time `YYYY-MM-DD HH:MM:SS`.
+    pub modified: Option<String>,
+    pub read_only: bool,
+}
+
+#[tauri::command]
+pub async fn photo_file_info(state: State<'_, AppState>, id: i64) -> CmdResult<PhotoFileInfo> {
+    let path = photo_path_of(&state, id)?;
+    let p = std::path::Path::new(&path);
+    let folder = p.parent().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+    Ok(match std::fs::metadata(p) {
+        Ok(md) => PhotoFileInfo {
+            online_only: vrclogger_core::photos::is_online_only(&md),
+            size: Some(md.len()),
+            modified: md
+                .modified()
+                .ok()
+                .map(|t| chrono::DateTime::<Local>::from(t).format("%Y-%m-%d %H:%M:%S").to_string()),
+            read_only: md.permissions().readonly(),
+            exists: true,
+            path,
+            folder,
+        },
+        Err(_) => PhotoFileInfo { path, folder, exists: false, online_only: false, size: None, modified: None, read_only: false },
+    })
+}
+
+/// Copies the full-size image to the clipboard. Online-only files are refused (no download).
+#[tauri::command]
+pub async fn copy_photo_image(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    let path = photo_path_of(&state, id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = std::path::Path::new(&path);
+        let md = std::fs::metadata(p).map_err(|_| "ファイルが見つかりません".to_string())?;
+        if vrclogger_core::photos::is_online_only(&md) {
+            return Err("オンライン専用のファイルはコピーできません（ダウンロードされていません）。".to_string());
+        }
+        let (width, height, bytes) =
+            vrclogger_core::photos::rgba_pixels(p).map_err(|e| format!("画像を読み込めませんでした: {e}"))?;
+        let image = arboard::ImageData { width: width as usize, height: height as usize, bytes: bytes.into() };
+        // The user's IME (ATOK) locks the clipboard right after each copy, so retry.
+        for attempt in 0..20 {
+            if arboard::Clipboard::new().and_then(|mut c| c.set_image(image.clone())).is_ok() {
+                return Ok(());
+            }
+            if attempt < 19 {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+        Err("クリップボードが他のアプリ (IME のクリップボード監視など) に使用中のため、コピーできませんでした。もう一度お試しください。".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

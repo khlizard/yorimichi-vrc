@@ -1,7 +1,6 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
 import { onPhotosChanged, type PhotoRow } from "../api";
 import { useDialog } from "../components/Dialog";
-import { useMetadataDialog } from "../metadata/MetadataProvider";
 import { useLatest } from "../components/hooks";
 import { errText, type TabHandle } from "../components/util";
 import { useNav } from "../nav";
@@ -51,7 +50,6 @@ function Cover({ id }: { id: number | null }) {
 
 export const AlbumsTab = forwardRef<AlbumsHandle, Props>(function AlbumsTab({ active, dayStartHour }, ref) {
   const { showError, choose, prompt } = useDialog();
-  const metadata = useMetadataDialog();
   const nav = useNav();
   const activated = useRef(false);
   const gen = useRef(0);
@@ -132,6 +130,13 @@ export const AlbumsTab = forwardRef<AlbumsHandle, Props>(function AlbumsTab({ ac
       if (activated.current) void load();
     },
     selectAlbum: (id: number) => {
+      activated.current = true;
+      void load(id);
+    },
+    getView: () => ({ albumId: selectedRef.current }),
+    restoreView: (v: unknown) => {
+      const id = (v as { albumId: number | null } | null)?.albumId ?? null;
+      if (id == null || (id === selectedRef.current && activated.current)) return;
       activated.current = true;
       void load(id);
     },
@@ -325,16 +330,6 @@ export const AlbumsTab = forwardRef<AlbumsHandle, Props>(function AlbumsTab({ ac
               <button type="button" disabled={busy} onClick={() => void exportHtml()}>
                 HTML に書き出す…
               </button>
-              <button
-                type="button"
-                disabled={busy || !current}
-                title="このアルバムの写真にメタデータを書き込む"
-                onClick={() =>
-                  current && metadata.open({ target: { kind: "album", albumId: current.id }, label: `アルバム「${current.name}」` })
-                }
-              >
-                メタデータ…
-              </button>
               <button type="button" disabled={busy} onClick={() => void remove()}>
                 アルバムを削除
               </button>
@@ -346,6 +341,8 @@ export const AlbumsTab = forwardRef<AlbumsHandle, Props>(function AlbumsTab({ ac
               size="m"
               active={active}
               onOpen={(i) => setLb(i)}
+              onFavoriteChanged={(id, fav) => setPhotos((l) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
+              menuExtra={(p) => [{ label: "このアルバムから外す", onClick: () => void removeIds([p.id]) }]}
               selectable={selecting}
               selectedIds={sel}
               onToggleSelect={(id, range) =>

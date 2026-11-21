@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { onPhotosChanged, type PhotoRow } from "../api";
-import { useMetadataDialog } from "../metadata/MetadataProvider";
 import { useDialog } from "../components/Dialog";
 import { useLatest } from "../components/hooks";
 import { errText, type TabHandle } from "../components/util";
@@ -19,6 +18,7 @@ import {
 import { StarIcon } from "../components/Star";
 import { useNav } from "../nav";
 import { Lightbox } from "../photos/Lightbox";
+import { usePhotoMenu } from "../photos/usePhotoMenu";
 import { Thumb } from "../photos/Thumb";
 import { dayLabel, logicalDay, photoLabel } from "../photos/photoUtil";
 import "../photos/photos.css";
@@ -76,7 +76,17 @@ function counts(parts: [string, number][]): string {
     .join(" · ");
 }
 
-function Tile({ p, mini, onOpen }: { p: PhotoRow; mini?: boolean; onOpen: () => void }) {
+function Tile({
+  p,
+  mini,
+  onOpen,
+  onContextMenu,
+}: {
+  p: PhotoRow;
+  mini?: boolean;
+  onOpen: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
   return (
     <button
       type="button"
@@ -85,6 +95,7 @@ function Tile({ p, mini, onOpen }: { p: PhotoRow; mini?: boolean; onOpen: () => 
       aria-label={photoLabel(p)}
       style={{ aspectRatio: aspect(p) }}
       onClick={onOpen}
+      onContextMenu={onContextMenu}
     >
       <Thumb photo={p} />
     </button>
@@ -94,7 +105,7 @@ function Tile({ p, mini, onOpen }: { p: PhotoRow; mini?: boolean; onOpen: () => 
 export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTab({ active, dayStartHour }, ref) {
   const { showError, choose } = useDialog();
   const nav = useNav();
-  const metadata = useMetadataDialog();
+  const menu = usePhotoMenu();
   const [day, setDay] = useState<string | null>(null);
   const [data, setData] = useState<TimelineDay | null>(null);
   const [memories, setMemories] = useState<MemoryYear[]>([]);
@@ -189,6 +200,14 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
         dirty.current = false;
         void loadRef.current(d, false);
       },
+      getView: () => ({ day: dayRef.current }),
+      restoreView(v: unknown) {
+        const d = (v as { day?: string | null } | null)?.day;
+        if (!d || d === dayRef.current) return;
+        started.current = true;
+        dirty.current = false;
+        void loadRef.current(d, false);
+      },
     }),
     [activeRef],
   );
@@ -214,10 +233,11 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
     if (lb) return;
     const t = e.target as HTMLElement;
     if (t.closest("input, textarea, select")) return;
-    if (e.key === "[" || (e.altKey && e.key === "ArrowLeft")) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === "[") {
       e.preventDefault();
       step(false);
-    } else if (e.key === "]" || (e.altKey && e.key === "ArrowRight")) {
+    } else if (e.key === "]") {
       e.preventDefault();
       step(true);
     }
@@ -244,6 +264,15 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
     } finally {
       setExporting(false);
     }
+  };
+
+  const favoriteChanged = (id: number, fav: boolean) => {
+    const upd = (l: PhotoRow[]) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x));
+    setLb((x) => (x ? { ...x, items: upd(x.items) } : x));
+    setData((d) =>
+      d ? { ...d, visits: d.visits.map((v) => ({ ...v, photos: upd(v.photos) })), loosePhotos: upd(d.loosePhotos) } : d,
+    );
+    setMemories((ms) => ms.map((m) => ({ ...m, photos: upd(m.photos) })));
   };
 
   const toggle = (set: Set<string>, key: string) => {
@@ -293,7 +322,12 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
       <>
         <div className="tl-photos" role="group" aria-label={label}>
           {shown.map((p) => (
-            <Tile key={p.id} p={p} onOpen={() => openDayPhoto(p.id)} />
+            <Tile
+              key={p.id}
+              p={p}
+              onOpen={() => openDayPhoto(p.id)}
+              onContextMenu={(e) => menu.onContextMenu(e, p, { onOpen: () => openDayPhoto(p.id), onFavoriteChanged: favoriteChanged })}
+            />
           ))}
         </div>
         {photos.length > PHOTO_CAP && !expanded && (
@@ -308,10 +342,10 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
   return (
     <div className="photo-surface tl" onKeyDown={onKeyDown}>
       <div className="tl-head">
-        <button type="button" disabled={!adj.prev} onClick={() => step(false)} title="[ または Alt+←">
+        <button type="button" disabled={!adj.prev} onClick={() => step(false)} title="[ キー">
           前の日
         </button>
-        <button type="button" disabled={!adj.next} onClick={() => step(true)} title="] または Alt+→">
+        <button type="button" disabled={!adj.next} onClick={() => step(true)} title="] キー">
           次の日
         </button>
         <input
@@ -326,14 +360,6 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
         <span className="tl-spacer" />
         <button type="button" disabled={!day || exporting} onClick={() => void exportDay()}>
           この日を HTML に書き出す…
-        </button>
-        <button
-          type="button"
-          disabled={!day}
-          title="この日の写真にメタデータを書き込む"
-          onClick={() => day && metadata.open({ target: { kind: "day", day }, label: `${day} の写真` })}
-        >
-          メタデータ…
         </button>
       </div>
       {day && (
@@ -428,7 +454,18 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
                   {m.photos.length > 0 && (
                     <div className="tl-mem-thumbs" role="group" aria-label={`${m.day} の写真`}>
                       {m.photos.slice(0, MEMORY_THUMBS).map((p, i) => (
-                        <Tile key={p.id} p={p} mini onOpen={() => setLb({ items: m.photos, index: i })} />
+                        <Tile
+                          key={p.id}
+                          p={p}
+                          mini
+                          onOpen={() => setLb({ items: m.photos, index: i })}
+                          onContextMenu={(e) =>
+                            menu.onContextMenu(e, p, {
+                              onOpen: () => setLb({ items: m.photos, index: i }),
+                              onFavoriteChanged: favoriteChanged,
+                            })
+                          }
+                        />
                       ))}
                     </div>
                   )}
@@ -458,15 +495,10 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
             setLb(null);
             nav.showPlayer(id, name);
           }}
-          onFavoriteChanged={(id, fav) => {
-            const upd = (l: PhotoRow[]) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x));
-            setLb((x) => (x ? { ...x, items: upd(x.items) } : x));
-            setData((d) =>
-              d ? { ...d, visits: d.visits.map((v) => ({ ...v, photos: upd(v.photos) })), loosePhotos: upd(d.loosePhotos) } : d,
-            );
-          }}
+          onFavoriteChanged={favoriteChanged}
         />
       )}
+      {menu.element}
     </div>
   );
 });

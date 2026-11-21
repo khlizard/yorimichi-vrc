@@ -23,7 +23,8 @@ import { errText, type TabHandle } from "./components/util";
 import { AvatarsTab } from "./tabs/AvatarsTab";
 import { LogsTab } from "./tabs/LogsTab";
 import "./app-extra.css";
-import { AppNavContext, type AppNav } from "./nav";
+import { AppNavContext, isShown, runBackIntercepts, type AppNav } from "./nav";
+import { logicalDay } from "./photos/photoUtil";
 import { AlbumsTab, type AlbumsHandle } from "./albums/AlbumsTab";
 import { PhotoNavContext, type PhotoFilter } from "./photos/nav";
 import { PhotosTab, type PhotosHandle } from "./photos/PhotosTab";
@@ -50,6 +51,18 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
+/** One Back / Forward step: a tab and what it showed (see TabHandle.getView). */
+interface HistEntry {
+  tab: TabId;
+  view: unknown;
+}
+const HISTORY_MAX = 50;
+
+const sameEntry = (a: HistEntry, b: HistEntry) => a.tab === b.tab && JSON.stringify(a.view) === JSON.stringify(b.view);
+
+/** A modal dialog is open: Back / Forward do nothing then. */
+const modalOpen = () => Array.from(document.querySelectorAll(".modal-backdrop")).some(isShown);
+
 const PENDING_STATUS = "新しいログを取り込みました（続きを読み込んだ一覧は「再取り込み」で更新）";
 
 export default function App() {
@@ -68,6 +81,10 @@ function Main() {
   const openMetadataRef = useRef(metadata.open);
   openMetadataRef.current = metadata.open;
   const [tab, setTab] = useState<TabId>("timeline");
+  const tabRef = useRef<TabId>("timeline");
+  const backStack = useRef<HistEntry[]>([]);
+  const forwardStack = useRef<HistEntry[]>([]);
+  const [, setHistoryVersion] = useState(0);
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [status, setStatus] = useState("");
@@ -92,6 +109,81 @@ function Main() {
   const logs = useRef<TabHandle>(null);
   /** An automatic import changed data but a paged list (players/logs) was left alone. */
   const pending = useRef(false);
+
+  const handles: Record<TabId, React.RefObject<TabHandle | null>> = {
+    timeline,
+    photos,
+    albums,
+    players,
+    sessions,
+    worlds,
+    urls,
+    avatars,
+    notifications,
+    logs,
+    stats,
+  };
+  const snapshot = (): HistEntry => ({ tab: tabRef.current, view: handles[tabRef.current].current?.getView?.() });
+  const showTab = (t: TabId) => {
+    tabRef.current = t;
+    flushSync(() => setTab(t));
+  };
+
+  /** Every move between screens goes through here: remember where we are, then switch and apply. */
+  const go = (t: TabId, apply?: () => void) => {
+    const before = snapshot();
+    const top = backStack.current[backStack.current.length - 1];
+    if (!top || !sameEntry(top, before)) {
+      backStack.current.push(before);
+      if (backStack.current.length > HISTORY_MAX) backStack.current.shift();
+    }
+    forwardStack.current = [];
+    showTab(t);
+    apply?.();
+    setHistoryVersion((v) => v + 1);
+  };
+
+  /** Back (-1) / Forward (+1). A lightbox closes first; nothing happens while a dialog is open. */
+  const move = (dir: -1 | 1) => {
+    if (modalOpen()) return;
+    if (dir === -1 && runBackIntercepts()) return;
+    const from = dir === -1 ? backStack.current : forwardStack.current;
+    const to = dir === -1 ? forwardStack.current : backStack.current;
+    const e = from.pop();
+    if (!e) return;
+    to.push(snapshot());
+    showTab(e.tab);
+    if (e.view !== undefined) handles[e.tab].current?.restoreView?.(e.view);
+    setHistoryVersion((v) => v + 1);
+  };
+  const moveRef = useRef(move);
+  moveRef.current = move;
+
+  // Alt+← / Alt+→, the keyboard's Back / Forward keys and the mouse's back / forward buttons.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const plainAlt = e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey;
+      const back = (plainAlt && e.key === "ArrowLeft") || e.key === "BrowserBack";
+      const forward = (plainAlt && e.key === "ArrowRight") || e.key === "BrowserForward";
+      if (!back && !forward) return;
+      e.preventDefault();
+      e.stopPropagation();
+      moveRef.current(back ? -1 : 1);
+    };
+    const onMouse = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      if (e.type === "mouseup") moveRef.current(e.button === 3 ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("mousedown", onMouse, true);
+    window.addEventListener("mouseup", onMouse, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("mousedown", onMouse, true);
+      window.removeEventListener("mouseup", onMouse, true);
+    };
+  }, []);
 
   const refreshAll = () => {
     pending.current = false;
@@ -172,9 +264,11 @@ function Main() {
       }),
     );
     unlisten.push(onImporting((b) => setImporting(b)));
-    unlisten.push(onOpenMetadataDialog((kind) =>
-        openMetadataRef.current(kind === "all" ? { target: { kind: "all" }, label: "書き込めるすべての写真", allowDownload: true } : {}),
-      ));
+    unlisten.push(
+      onOpenMetadataDialog(() =>
+        openMetadataRef.current({ target: { kind: "all" }, label: "書き込めるすべての写真", allowDownload: true }),
+      ),
+    );
     unlisten.push(
       onImportFinished(({ changed, automatic }) => {
         if (changed && !automatic) {
@@ -206,19 +300,17 @@ function Main() {
 
   const navigateToVisit = (visitId: number | null) => {
     if (visitId == null) return;
-    flushSync(() => setTab("sessions"));
-    void sessions.current?.selectVisitById(visitId);
+    go("sessions", () => void sessions.current?.selectVisitById(visitId));
   };
 
   const navigateToPlayer = (_playerId: number, displayName: string) => {
-    flushSync(() => setTab("players"));
-    players.current?.searchFor(displayName);
+    go("players", () => players.current?.searchFor(displayName));
   };
 
   const navigateToPhotos = (filter: PhotoFilter) => {
-    flushSync(() => setTab("photos"));
-    photos.current?.showFor(filter);
+    go("photos", () => photos.current?.showFor(filter));
   };
+  const showDay = (day: string) => go("timeline", () => timeline.current?.showDay(day));
   const navigateToPhotosRef = useRef(navigateToPhotos);
   navigateToPhotosRef.current = navigateToPhotos;
   // Stable context value so tabs using it do not re-render on every App render.
@@ -229,18 +321,10 @@ function Main() {
     showPhotos: navigateToPhotos,
     showVisit: navigateToVisit,
     showPlayer: navigateToPlayer,
-    showDay: (day) => {
-      flushSync(() => setTab("timeline"));
-      timeline.current?.showDay(day);
-    },
-    showWorld: (id) => {
-      flushSync(() => setTab("worlds"));
-      worlds.current?.selectWorld(id);
-    },
-    showAlbum: (id) => {
-      flushSync(() => setTab("albums"));
-      albums.current?.selectAlbum(id);
-    },
+    showDay,
+    showDayAt: (ts) => showDay(logicalDay(ts, settings?.DayStartHour ?? 0)),
+    showWorld: (id) => go("worlds", () => worlds.current?.selectWorld(id)),
+    showAlbum: (id) => go("albums", () => albums.current?.selectAlbum(id)),
   };
   const appNav = useMemo<AppNav>(
     () => ({
@@ -248,6 +332,7 @@ function Main() {
       showVisit: (id) => appNavRef.current.showVisit(id),
       showPlayer: (id, n) => appNavRef.current.showPlayer(id, n),
       showDay: (d) => appNavRef.current.showDay(d),
+      showDayAt: (ts) => appNavRef.current.showDayAt(ts),
       showWorld: (id) => appNavRef.current.showWorld(id),
       showAlbum: (id) => appNavRef.current.showAlbum(id),
     }),
@@ -262,7 +347,7 @@ function Main() {
     else if (e.key === "End") n = TABS.length - 1;
     else return;
     e.preventDefault();
-    setTab(TABS[n].id);
+    if (TABS[n].id !== tabRef.current) go(TABS[n].id);
     document.getElementById(`tab-${TABS[n].id}`)?.focus();
   };
 
@@ -304,6 +389,21 @@ function Main() {
           {status}
         </div>
       </div>
+      <div className="tabbar">
+      <div className="histnav">
+        <button type="button" aria-label="戻る" title="戻る (Alt+←)" disabled={backStack.current.length === 0} onClick={() => move(-1)}>
+          ←
+        </button>
+        <button
+          type="button"
+          aria-label="進む"
+          title="進む (Alt+→)"
+          disabled={forwardStack.current.length === 0}
+          onClick={() => move(1)}
+        >
+          →
+        </button>
+      </div>
       <div className="tabstrip" role="tablist" aria-label="画面">
         {TABS.map((t, i) => (
           <button
@@ -314,12 +414,13 @@ function Main() {
             aria-controls={`panel-${t.id}`}
             tabIndex={tab === t.id ? 0 : -1}
             className={`tab${tab === t.id ? " active" : ""}`}
-            onClick={() => setTab(t.id)}
+            onClick={() => t.id !== tabRef.current && go(t.id)}
             onKeyDown={(e) => onTabKey(e, i)}
           >
             {t.label}
           </button>
         ))}
+      </div>
       </div>
       <div className="tabbody">
         {panel("timeline", <TimelineTab ref={timeline} active={tab === "timeline"} dayStartHour={settings?.DayStartHour ?? 0} />)}

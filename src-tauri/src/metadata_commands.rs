@@ -10,7 +10,7 @@ use chrono::{Local, NaiveDateTime};
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use vrclogger_core::data::metadata::{DownloadOutcome, MetaOutcome, MetaPlan, MetaTarget, MetadataService};
+use vrclogger_core::data::metadata::{DownloadOutcome, MetaOutcome, MetaPlan, MetaStatus, MetaTarget, MetadataService};
 use vrclogger_core::photos::cloud;
 
 use crate::app::{self, AppState};
@@ -113,9 +113,8 @@ fn make_plan(svc: &MetadataService, ids: &[i64], mode: Mode, now: NaiveDateTime)
     }
 }
 
-fn db_inputs(state: &AppState) -> (std::path::PathBuf, u32) {
-    let s = state.settings.lock().unwrap();
-    (s.resolved_db_path(), s.day_start_hour)
+fn db_path(state: &AppState) -> std::path::PathBuf {
+    state.settings.lock().unwrap().resolved_db_path()
 }
 
 #[tauri::command]
@@ -124,18 +123,32 @@ pub async fn metadata_plan(app: AppHandle, state: State<'_, AppState>, target: M
     if state.importing.load(Ordering::SeqCst) {
         return Err(BUSY_PLAN.to_string());
     }
-    let (db_path, hour) = db_inputs(&state);
+    let db_path = db_path(&state);
     let previous = state.status.lock().unwrap().clone();
     app::set_status(&app, "対象を確認中…");
     let r = tauri::async_runtime::spawn_blocking(move || -> Result<MetaPlan, String> {
         let conn = app::open_db(&db_path).map_err(|e| e.to_string())?;
         let svc = MetadataService::new(&conn);
-        let ids = svc.resolve(&target, hour).map_err(|e| e.to_string())?;
+        let ids = svc.resolve(&target).map_err(|e| e.to_string())?;
         make_plan(&svc, &ids, mode, Local::now().naive_local()).map_err(|e| e.to_string())
     })
     .await;
     app::set_status(&app, previous);
     r.map_err(|e| e.to_string())?
+}
+
+/// Metadata state of one photo (context menu / info dialog). Reads at most a local file's header.
+#[tauri::command]
+pub async fn photo_meta_status(state: State<'_, AppState>, id: i64) -> CmdResult<MetaStatus> {
+    let db_path = db_path(&state);
+    tauri::async_runtime::spawn_blocking(move || -> Result<MetaStatus, String> {
+        let conn = app::open_db(&db_path).map_err(|e| e.to_string())?;
+        MetadataService::new(&conn)
+            .status(id, local_offset_minutes(), Local::now().naive_local())
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -159,13 +172,13 @@ pub async fn metadata_run(
         return Err(BUSY_PLAN.to_string());
     }
     state.metadata_cancel.store(false, Ordering::SeqCst);
-    let (db_path, hour) = db_inputs(&state);
+    let db_path = db_path(&state);
     app::set_status(&app, match mode {
         Mode::Write => "メタデータを書き込み中…",
         Mode::Remove => "メタデータを取り除き中…",
     });
     let handle = app.clone();
-    let r = tauri::async_runtime::spawn_blocking(move || run_blocking(&handle, &db_path, hour, &target, mode, allow_download))
+    let r = tauri::async_runtime::spawn_blocking(move || run_blocking(&handle, &db_path, &target, mode, allow_download))
         .await;
     app::release_importing(&app);
     match r {
@@ -197,14 +210,13 @@ fn file_row(conn: &rusqlite::Connection, id: i64) -> Result<(String, String, i64
 fn run_blocking(
     app: &AppHandle,
     db_path: &std::path::Path,
-    hour: u32,
     target: &MetaTarget,
     mode: Mode,
     allow_download: bool,
 ) -> Result<MetaRunSummary, String> {
     let conn = app::open_db(db_path).map_err(|e| e.to_string())?;
     let svc = MetadataService::new(&conn);
-    let ids = svc.resolve(target, hour).map_err(|e| e.to_string())?;
+    let ids = svc.resolve(target).map_err(|e| e.to_string())?;
     let now = Local::now().naive_local();
     let plan = make_plan(&svc, &ids, mode, now).map_err(|e| e.to_string())?;
     let offset = local_offset_minutes();

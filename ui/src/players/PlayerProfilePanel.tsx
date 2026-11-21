@@ -273,6 +273,7 @@ export function PlayerProfilePanel({ profile, allTags, onChanged }: Props) {
           title="一緒にいたときの写真"
           photos={recent}
           onOpen={setLbIndex}
+          onFavoriteChanged={(id, fav) => setRecent((l) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
           actions={
             <button type="button" onClick={() => nav.showPhotos({ playerId: profile.id, label: profile.displayName })}>
               すべて見る ({profile.photoCount.toLocaleString("ja-JP")})

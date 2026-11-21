@@ -421,9 +421,17 @@ a.link {
   text-align: left;
   padding: 3px 12px;
 }
-.context-menu button:hover,
+.context-menu button:hover:not(:disabled),
 .context-menu button:focus-visible {
   background: var(--select-bg);
+}
+.context-menu button:disabled {
+  color: var(--muted);
+}
+.context-menu-sep {
+  height: 1px;
+  margin: 3px 0;
+  background: var(--button-border);
 }
 .context-menu .hint {
   color: var(--muted);

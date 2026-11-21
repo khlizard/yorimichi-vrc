@@ -161,6 +161,22 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
         setFavOnly(false);
         void loadRef.current(f, id, true);
       },
+      getView: () => ({ ...filters.current, worldId: selectedRef.current }),
+      restoreView(v: unknown) {
+        const view = v as { term: string; favOnly: boolean; sort: WorldSort; worldId: number | null } | null;
+        if (!view) return;
+        const cur = filters.current;
+        const sameFilters = keyOf(view.term, view.favOnly, view.sort) === keyOf(cur.term, cur.favOnly, cur.sort);
+        if (sameFilters && view.worldId === selectedRef.current && started.current) return;
+        started.current = true;
+        dirty.current = false;
+        const f = { term: view.term, favOnly: view.favOnly, sort: view.sort };
+        loadedKey.current = keyOf(f.term, f.favOnly, f.sort);
+        setTerm(f.term);
+        setFavOnly(f.favOnly);
+        setSort(f.sort);
+        void loadRef.current(f, view.worldId, true);
+      },
     }),
     [activeRef, filters],
   );
@@ -313,6 +329,7 @@ export const WorldsTab = forwardRef<WorldsHandle, { active: boolean }>(function 
                   title="写真"
                   photos={worldPhotos}
                   onOpen={setLbIndex}
+                  onFavoriteChanged={(id, fav) => setWorldPhotos((l) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
                   actions={
                     <button type="button" onClick={() => nav.showPhotos({ worldRefId: sel.id, label: sel.name })}>
                       すべて見る ({nf(sel.photoCount)})

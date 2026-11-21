@@ -29,4 +29,8 @@ export interface TabHandle {
   refresh(): void;
   /** Number of rows currently loaded (paged tabs only). */
   loadedCount?(): number;
+  /** Snapshot of what the tab shows, for Back / Forward (JSON-comparable). */
+  getView?(): unknown;
+  /** Show a snapshot taken by `getView` again. */
+  restoreView?(view: unknown): void;
 }

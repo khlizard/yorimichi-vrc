@@ -215,6 +215,21 @@ export function PlayersTab({
       selectedIdRef.current = null;
       void reload();
     },
+    getView: () => ({ text: activeTerm.current, tag: tagFilterRef.current, selectedId: selectedIdRef.current }),
+    restoreView: (v: unknown) => {
+      const view = v as { text: string; tag: number | null; selectedId: number | null } | null;
+      if (!view) return;
+      if (view.text === activeTerm.current && view.tag === tagFilterRef.current) {
+        if (view.selectedId != null && view.selectedId !== selectedIdRef.current) select(view.selectedId);
+        return;
+      }
+      setText(view.text);
+      activeTerm.current = view.text;
+      tagFilterRef.current = view.tag;
+      setTagFilter(view.tag);
+      selectedIdRef.current = view.selectedId;
+      void reload();
+    },
   }));
 
   return (

@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { onPhotosChanged, photos as fetchPhotos, photosForVisit, type PhotoRow } from "../api";
+import type { MenuItem } from "../components/ContextMenu";
 import { useLatest } from "../components/hooks";
 import { photoLabel } from "./photoUtil";
 import { Thumb } from "./Thumb";
+import { usePhotoMenu } from "./usePhotoMenu";
 import "./photos.css";
 
 /** Photos of one visit (null = none selected). Reloads when the photo library changes. */
@@ -74,6 +76,8 @@ export function PhotoStrip({
   actions,
   clip,
   title,
+  onFavoriteChanged,
+  menuExtra,
 }: {
   photos: PhotoRow[];
   onOpen: (index: number) => void;
@@ -83,7 +87,11 @@ export function PhotoStrip({
   clip?: boolean;
   /** Replaces the default "このときの写真 (n)" heading. */
   title?: string;
+  onFavoriteChanged?: (id: number, favorite: boolean) => void;
+  /** Location-specific items added to the right-click menu. */
+  menuExtra?: (photo: PhotoRow) => MenuItem[];
 }) {
+  const menu = usePhotoMenu();
   if (photos.length === 0) return null;
   return (
     <div className={clip ? "strip clip" : "strip"}>
@@ -101,11 +109,13 @@ export function PhotoStrip({
             aria-label={photoLabel(p)}
             style={{ aspectRatio: p.width && p.height ? `${p.width} / ${p.height}` : "16 / 9" }}
             onClick={() => onOpen(i)}
+            onContextMenu={(e) => menu.onContextMenu(e, p, { onOpen: () => onOpen(i), onFavoriteChanged, extra: menuExtra?.(p) })}
           >
             <Thumb photo={p} />
           </button>
         ))}
       </div>
+      {menu.element}
     </div>
   );
 }

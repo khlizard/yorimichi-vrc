@@ -10,7 +10,6 @@ import {
 } from "../api";
 import { describeAdd, useAddToAlbum } from "../albums/addToAlbum";
 import { useDialog } from "../components/Dialog";
-import { useMetadataDialog } from "../metadata/MetadataProvider";
 import { useLatest } from "../components/hooks";
 import { StarIcon } from "../components/Star";
 import { errText, type TabHandle } from "../components/util";
@@ -86,7 +85,6 @@ export function PhotosTab({
   ref?: Ref<PhotosHandle>;
 }) {
   const { showError } = useDialog();
-  const metadata = useMetadataDialog();
   const nav = useNav();
   const addToAlbum = useAddToAlbum();
   const range = useLatest({ from, to });
@@ -232,6 +230,21 @@ export function PhotosTab({
       setMonth(null);
       void reload(true);
     },
+    getView: () => ({ filter: filterRef.current, month: monthRef.current, favOnly: favRef.current }),
+    restoreView: (v: unknown) => {
+      const view = v as { filter: PhotoFilter | null; month: string | null; favOnly: boolean } | null;
+      if (!view) return;
+      const same =
+        JSON.stringify(view.filter) === JSON.stringify(filterRef.current) &&
+        view.month === monthRef.current &&
+        view.favOnly === favRef.current;
+      if (same && activated.current) return;
+      activated.current = true;
+      setFilter(view.filter);
+      setMonth(view.month);
+      setFavOnly(view.favOnly);
+      void reload(true);
+    },
   }));
 
   const months = useMemo(() => monthsOf(days), [days]);
@@ -351,15 +364,6 @@ export function PhotosTab({
             >
               アルバムに追加…
             </button>
-            <button
-              type="button"
-              disabled={sel.size === 0}
-              onClick={() =>
-                metadata.open({ target: { kind: "ids", ids: [...sel] }, label: `選択した ${sel.size.toLocaleString("ja-JP")} 枚` })
-              }
-            >
-              メタデータを書き込む…
-            </button>
             <button type="button" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
               選択を解除
             </button>
@@ -408,6 +412,7 @@ export function PhotosTab({
         hasMore={hasMore}
         loadMore={loadMore}
         onOpen={(i) => setLb(i)}
+        onFavoriteChanged={(id, fav) => setItems(itemsRef.current.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
         selectable={selecting}
         selectedIds={sel}
         onToggleSelect={(id, range) =>

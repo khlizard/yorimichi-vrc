@@ -1,9 +1,11 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
+import { memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type Ref } from "react";
 import { type PhotoRow } from "../api";
+import type { MenuItem } from "../components/ContextMenu";
 import { useLatest } from "../components/hooks";
 import { dayLabel, logicalDay, photoLabel } from "./photoUtil";
 import { Thumb } from "./Thumb";
+import { usePhotoMenu } from "./usePhotoMenu";
 import { StarIcon } from "../components/Star";
 import "./photos.css";
 
@@ -33,6 +35,9 @@ export interface PhotoGridProps {
   /** shiftRange: ids from the last toggled item to this one (inclusive) on Shift+click. */
   onToggleSelect?: (id: number, shiftRange?: number[]) => void;
   emptyText: string;
+  onFavoriteChanged?: (id: number, favorite: boolean) => void;
+  /** Location-specific items added to the right-click menu. */
+  menuExtra?: (photo: PhotoRow) => MenuItem[];
   /** false while the surrounding tab is hidden: resize events are ignored (default true). */
   active?: boolean;
   ref?: Ref<PhotoGridHandle>;
@@ -125,9 +130,10 @@ interface TileProps {
   selected: boolean;
   selectable: boolean;
   onClick: (index: number, shift: boolean) => void;
+  onContextMenu: (e: MouseEvent, index: number) => void;
 }
 
-const PhotoTile = memo(function PhotoTile({ p, index, w, h, selected, selectable, onClick }: TileProps) {
+const PhotoTile = memo(function PhotoTile({ p, index, w, h, selected, selectable, onClick, onContextMenu }: TileProps) {
   return (
     <button
       type="button"
@@ -138,6 +144,7 @@ const PhotoTile = memo(function PhotoTile({ p, index, w, h, selected, selectable
       aria-label={photoLabel(p)}
       aria-pressed={selectable ? selected : undefined}
       onClick={(e) => onClick(index, e.shiftKey)}
+      onContextMenu={(e) => onContextMenu(e, index)}
     >
       <Thumb photo={p} />
       {selectable && (
@@ -292,6 +299,22 @@ export function PhotoGrid(p: PhotoGridProps) {
     [scrollToIndex],
   );
 
+  const menu = usePhotoMenu();
+  const openMenu = menu.onContextMenu;
+  const handleContextMenu = useCallback(
+    (e: MouseEvent, index: number) => {
+      const P = props.current;
+      const photo = P.items[index];
+      if (!photo) return;
+      openMenu(e, photo, {
+        onOpen: () => P.onOpen(index),
+        onFavoriteChanged: P.onFavoriteChanged,
+        extra: P.menuExtra?.(photo),
+      });
+    },
+    [props, openMenu],
+  );
+
   const handleClick = useCallback(
     (index: number, shift: boolean) => {
       const P = props.current;
@@ -397,6 +420,7 @@ export function PhotoGrid(p: PhotoGridProps) {
                       selected={sel?.has(items[t.index].id) ?? false}
                       selectable={p.selectable ?? false}
                       onClick={handleClick}
+                      onContextMenu={handleContextMenu}
                     />
                   ))
                 )}
@@ -405,6 +429,7 @@ export function PhotoGrid(p: PhotoGridProps) {
           })}
         </div>
       )}
+      {menu.element}
     </div>
   );
 }

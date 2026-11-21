@@ -11,6 +11,7 @@ import {
   type MetaProgress,
   type MetaRunSummary,
   type MetaTarget,
+  SKIP_LABELS,
   type SkipReason,
 } from "../metadataApi";
 import type { MetadataOpenOptions } from "./MetadataProvider";
@@ -20,16 +21,6 @@ const nf = (n: number) => n.toLocaleString("ja-JP");
 const size = (bytes: number) =>
   bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6)).toLocaleString("ja-JP")} MB`;
 
-const SKIP_LABELS: Record<SkipReason, string> = {
-  hasMetadata: "すでにメタデータがある",
-  noLog: "その時刻のログがない",
-  estimatedTime: "撮影時刻が推定（ファイル名に日時がない）",
-  onlineOnly: "オンライン専用（ダウンロードされていない）",
-  missing: "ファイルが見つからない",
-  unsupportedFormat: "対象外の形式（PNG・JPEG 以外）",
-  readOnly: "書き込み禁止",
-  unreadable: "読み取れない",
-};
 const skipLabel = (r: SkipReason, mode: MetaMode) =>
   r === "hasMetadata" && mode === "remove" ? "このアプリが書いたメタデータがない" : SKIP_LABELS[r];
 
@@ -41,7 +32,7 @@ const WRITE_NOTES = [
 ];
 const REMOVE_NOTES = ["このアプリが書き込んだメタデータだけを取り除きます。VRChat などが書いたものには触れません。"];
 
-type Step = "target" | "planning" | "plan" | "running" | "result";
+type Step = "planning" | "plan" | "running" | "result";
 
 /** Keep Tab inside the dialog. */
 function trapTab(e: KeyboardEvent<HTMLElement>) {
@@ -61,12 +52,10 @@ function trapTab(e: KeyboardEvent<HTMLElement>) {
 
 export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; onClose: () => void }) {
   const { showError } = useDialog();
-  const fixed = opts.target ?? null;
-  const [step, setStep] = useState<Step>(fixed ? "planning" : "target");
-  const [mode, setMode] = useState<MetaMode>("write");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [target, setTarget] = useState<MetaTarget | null>(fixed);
+  const fixed = opts.target;
+  const [step, setStep] = useState<Step>("planning");
+  const [mode, setMode] = useState<MetaMode>(opts.mode ?? "write");
+  const [target, setTarget] = useState<MetaTarget>(fixed);
   const [plan, setPlan] = useState<MetaPlan | null>(null);
   const [progress, setProgress] = useState<MetaProgress | null>(null);
   const [summary, setSummary] = useState<{ s: MetaRunSummary; mode: MetaMode } | null>(null);
@@ -128,23 +117,21 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
 
   // Opened with a target: plan immediately.
   useEffect(() => {
-    if (fixed) void doPlan(fixed, "write", null);
+    void doPlan(fixed, mode, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const rangeOk = from !== "" && to !== "" && from <= to;
 
   const changeMode = (m: MetaMode) => {
     if (m === mode) return;
     setMode(m);
-    if (target && (step === "plan" || step === "planning")) void doPlan(target, m, step === "plan" ? { step: "plan", mode, plan } : fixed ? null : { step: "target", mode, plan: null });
+    if (step === "plan" || step === "planning") void doPlan(target, m, step === "plan" ? { step: "plan", mode, plan } : null);
   };
 
   const withDownload = mode === "write" && allowDownload && (plan?.download ?? 0) > 0;
   const runCount = plan ? plan.eligible + (withDownload ? plan.download : 0) : 0;
 
   const run = async () => {
-    if (!target || !plan || runCount === 0) return;
+    if (!plan || runCount === 0) return;
     setProgress({ done: 0, total: runCount, fileName: "", downloading: false });
     setCancelling(false);
     setStep("running");
@@ -204,25 +191,9 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
           写真のメタデータ
         </div>
         <div className="md-body">
-          {step === "target" && (
-            <>
-              <div className="md-range">
-                <label htmlFor="md-from">期間</label>
-                <input id="md-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                <span>〜</span>
-                <input id="md-to" type="date" aria-label="期間の終了日" value={to} onChange={(e) => setTo(e.target.value)} />
-              </div>
-              {from !== "" && to !== "" && from > to && (
-                <div className="md-warn" role="alert">
-                  開始日は終了日以前にしてください。
-                </div>
-              )}
-              {radios}
-            </>
-          )}
           {(step === "planning" || step === "plan") && (
             <>
-              {fixed && opts.label && <div className="md-label">{opts.label}</div>}
+              {opts.label && <div className="md-label">{opts.label}</div>}
               {radios}
             </>
           )}
@@ -351,21 +322,6 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
           )}
         </div>
         <div className="modal-footer">
-          {step === "target" && (
-            <>
-              <button
-                type="button"
-                className="button-accent"
-                disabled={!rangeOk}
-                onClick={() => void doPlan({ kind: "range", from, to }, mode, { step: "target", mode, plan: null })}
-              >
-                対象を確認
-              </button>
-              <button type="button" onClick={close}>
-                キャンセル
-              </button>
-            </>
-          )}
           {(step === "planning" || step === "plan") && (
             <>
               <button

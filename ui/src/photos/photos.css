@@ -424,3 +424,45 @@ span.lb-name {
   height: 100%;
   object-fit: cover;
 }
+
+/* ---- Photo info dialog ---- */
+.pi-modal {
+  width: 520px;
+}
+.pi-title {
+  overflow-wrap: anywhere;
+}
+.pi-body {
+  padding: 8px 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.pi-section + .pi-section {
+  margin-top: 8px;
+}
+.pi-sub {
+  color: var(--muted);
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+}
+.pi-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 4px 0 0;
+}
+.pi-dl dt {
+  color: var(--muted);
+}
+.pi-dl dd {
+  margin: 0;
+  min-width: 0;
+  word-break: break-all;
+  user-select: text;
+}
+.pi-muted {
+  color: var(--muted);
+}
+.pi-copy {
+  padding: 0 6px;
+}

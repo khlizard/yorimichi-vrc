@@ -3,8 +3,10 @@ import { fullUrl, openPhoto, photoDetail, revealPhoto, setPhotoFavorite, thumbUr
 import { useDialog } from "../components/Dialog";
 import { useLatest } from "../components/hooks";
 import { errText } from "../components/util";
+import { isShown, useBackIntercept } from "../nav";
 import { StarIcon } from "../components/Star";
 import { photoLabel } from "./photoUtil";
+import { usePhotoMenu } from "./usePhotoMenu";
 import "./photos.css";
 
 export interface LightboxAction {
@@ -43,6 +45,13 @@ export function Lightbox(p: LightboxProps) {
   const [favOv, setFavOv] = useState<Map<number, boolean>>(() => new Map());
   const favBusy = useRef(false);
   const preload = useRef<HTMLImageElement[]>([]);
+  const menu = usePhotoMenu();
+
+  useBackIntercept(() => {
+    if (!isShown(rootRef.current)) return false;
+    latest.current.onClose();
+    return true;
+  });
 
   // Focus the dialog on open; give focus back to the opening tile (or the tile of the current photo) on close.
   useEffect(() => {
@@ -174,6 +183,15 @@ export function Lightbox(p: LightboxProps) {
 
   if (!photo) return null;
 
+  const onImageMenu = (e: React.MouseEvent) =>
+    menu.onContextMenu(e, photo, {
+      onFavoriteChanged: (pid, next) => {
+        setFavOv((m) => new Map(m).set(pid, next));
+        p.onFavoriteChanged?.(pid, next);
+      },
+      extra: p.extraActions?.map((a) => ({ label: a.label, onClick: () => a.onClick(photo) })),
+    });
+
   const cur = detail?.id === id ? detail : null;
   const players = cur?.d?.players ?? [];
   const failed = badId === id;
@@ -232,7 +250,15 @@ export function Lightbox(p: LightboxProps) {
       </div>
       <div className="lb-stage">
         {!loaded && thumbBadId !== id && (
-          <img key={`t${id}`} className="lb-img" src={thumbUrl(id)} alt="" draggable={false} onError={() => setThumbBadId(id)} />
+          <img
+            key={`t${id}`}
+            className="lb-img"
+            src={thumbUrl(id)}
+            alt=""
+            draggable={false}
+            onError={() => setThumbBadId(id)}
+            onContextMenu={onImageMenu}
+          />
         )}
         <img
           key={`f${id}`}
@@ -242,8 +268,13 @@ export function Lightbox(p: LightboxProps) {
           draggable={false}
           onLoad={() => setLoadedId(id)}
           onError={() => setBadId(id)}
+          onContextMenu={onImageMenu}
         />
-        {failed && thumbBadId === id && <div className="lb-msg">{photo.onlineOnly ? "未ダウンロード" : "表示できません"}</div>}
+        {failed && thumbBadId === id && (
+          <div className="lb-msg" onContextMenu={onImageMenu}>
+            {photo.onlineOnly ? "未ダウンロード" : "表示できません"}
+          </div>
+        )}
       </div>
       {showInfo && (
         <div className="lb-info">
@@ -299,6 +330,7 @@ export function Lightbox(p: LightboxProps) {
           )}
         </div>
       )}
+      {menu.element}
     </div>
   );
 }

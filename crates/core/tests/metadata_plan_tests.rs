@@ -6,8 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use common::{dt, import_visits, Fixture, LOCAL_USR, V};
-use vrclogger_core::data::metadata::{MetaOutcome, MetaTarget, MetadataService, SkipReason};
-use vrclogger_core::data::LibraryService;
+use vrclogger_core::data::metadata::{MetaOutcome, MetaTarget, MetadataService, SkipReason, XmpState};
 use vrclogger_core::photos::scan_folders;
 use xmp_helpers::*;
 
@@ -130,7 +129,7 @@ fn plan_write_counts_and_example() {
     scan(&fx);
     let svc = MetadataService::new(&fx.conn);
 
-    let ids = svc.resolve(&MetaTarget::Range { from: common::d(2026, 1, 1), to: common::d(2026, 12, 31) }, 0).unwrap();
+    let ids = svc.resolve(&MetaTarget::All).unwrap();
     assert_eq!(ids.len(), 6);
     let plan = svc.plan_write(&ids, OFFSET, now()).unwrap();
     assert_eq!((plan.total, plan.eligible), (6, 2));
@@ -256,29 +255,10 @@ fn resolve_targets() {
     let id = |i: usize| ids[i].1;
 
     // Ids: given order, unknown and repeated ids dropped.
-    let got = svc.resolve(&MetaTarget::Ids { ids: vec![id(3), 99_999, id(0), id(3)] }, 6).unwrap();
+    let got = svc.resolve(&MetaTarget::Ids { ids: vec![id(3), 99_999, id(0), id(3)] }).unwrap();
     assert_eq!(got, vec![id(3), id(0)]);
-
-    // Logical day 2026-01-10 with a 06:00 start: 01-10 06:00 up to 01-11 05:59.
-    let got = svc.resolve(&MetaTarget::Day { day: common::d(2026, 1, 10) }, 6).unwrap();
-    assert_eq!(got, vec![id(2), id(3)]);
-    let got = svc.resolve(&MetaTarget::Day { day: common::d(2026, 1, 10) }, 0).unwrap();
-    assert_eq!(got, vec![id(1), id(2)]);
-
-    // Range: inclusive calendar days.
-    let got = svc.resolve(&MetaTarget::Range { from: common::d(2026, 1, 10), to: common::d(2026, 1, 11) }, 6).unwrap();
-    assert_eq!(got, vec![id(1), id(2), id(3), id(4)]);
-    let got = svc.resolve(&MetaTarget::Range { from: common::d(2026, 1, 12), to: common::d(2026, 1, 12) }, 6).unwrap();
-    assert_eq!(got, vec![id(5)]);
-    assert!(svc.resolve(&MetaTarget::Range { from: common::d(2026, 1, 12), to: common::d(2026, 1, 1) }, 6).unwrap().is_empty());
-
-    // Album order, not time order.
-    let lib = LibraryService::new(&fx.conn);
-    let al = lib.create_album("A", "", now()).unwrap();
-    lib.add_photos(al.id, &[id(4), id(0), id(2)]).unwrap();
-    let got = svc.resolve(&MetaTarget::Album { album_id: al.id }, 6).unwrap();
-    assert_eq!(got, vec![id(4), id(0), id(2)]);
-    assert!(svc.resolve(&MetaTarget::Album { album_id: 12345 }, 6).unwrap().is_empty());
+    // All: time order.
+    assert_eq!(svc.resolve(&MetaTarget::All).unwrap(), ids.iter().map(|(_, i)| *i).collect::<Vec<_>>());
 }
 
 #[test]
@@ -286,7 +266,7 @@ fn resolve_all_skips_missing_rows() {
     let (fx, ids) = resolve_fixture();
     fx.conn.execute("UPDATE photos SET missing = 1 WHERE id = ?1", [ids[1].1]).unwrap();
     let svc = MetadataService::new(&fx.conn);
-    let got = svc.resolve(&MetaTarget::All, 6).unwrap();
+    let got = svc.resolve(&MetaTarget::All).unwrap();
     let want: Vec<i64> = ids.iter().enumerate().filter(|(i, _)| *i != 1).map(|(_, (_, id))| *id).collect();
     assert_eq!(got, want);
 }
@@ -312,7 +292,7 @@ fn plan_write_puts_online_only_candidates_in_the_download_bucket() {
         mark_online(&fx, id_of(&fx, n));
     }
     let svc = MetadataService::new(&fx.conn);
-    let ids = svc.resolve(&MetaTarget::All, 0).unwrap();
+    let ids = svc.resolve(&MetaTarget::All).unwrap();
     let plan = svc.plan_write(&ids, OFFSET, now()).unwrap();
 
     assert_eq!((plan.total, plan.eligible, plan.online, plan.download), (5, 1, 4, 1));
@@ -379,14 +359,55 @@ fn apply_write_downloading_writes_and_records_files_flagged_online() {
 fn target_deserializes_from_camel_case_json() {
     let t: MetaTarget = serde_json::from_str(r#"{"kind":"all"}"#).unwrap();
     assert!(matches!(t, MetaTarget::All));
-    let t: MetaTarget = serde_json::from_str(r#"{"kind":"album","albumId":3}"#).unwrap();
-    assert!(matches!(t, MetaTarget::Album { album_id: 3 }));
-    let t: MetaTarget = serde_json::from_str(r#"{"kind":"range","from":"2026-01-01","to":"2026-01-31"}"#).unwrap();
-    assert!(matches!(t, MetaTarget::Range { .. }));
     let t: MetaTarget = serde_json::from_str(r#"{"kind":"ids","ids":[1,2]}"#).unwrap();
     assert!(matches!(t, MetaTarget::Ids { ids } if ids == [1, 2]));
-    let t: MetaTarget = serde_json::from_str(r#"{"kind":"day","day":"2026-01-10"}"#).unwrap();
-    assert!(matches!(t, MetaTarget::Day { .. }));
+    // Removed kinds are rejected.
+    assert!(serde_json::from_str::<MetaTarget>(r#"{"kind":"album","albumId":3}"#).is_err());
+    assert!(serde_json::from_str::<MetaTarget>(r#"{"kind":"range","from":"2026-01-01","to":"2026-01-31"}"#).is_err());
+    assert!(serde_json::from_str::<MetaTarget>(r#"{"kind":"day","day":"2026-01-10"}"#).is_err());
+}
+
+#[test]
+fn status_reports_each_situation() {
+    let fx = Fixture::new();
+    with_visit(&fx);
+    let png = png_bytes(6, 6);
+    put(&fx, "VRChat_2026-01-10_20-30-00.000.png", &png); // writable
+    put(&fx, "vrc_2026-01-10_20-31-00.png", &png_with_chunk(6, 6, &itxt("XML:com.adobe.xmp", false, &vrchat_xmp("W")))); // other XMP
+    put(&fx, "VRChat_2026-01-10_20-32-00.000.png", &png); // will carry ours
+    put(&fx, "VRChat_2026-01-10_20-33-00.000.png", &png); // online-only candidate
+    put(&fx, "VRChat_2026-01-11_10-00-00.000.png", &png); // no log
+    put(&fx, "gone_2026-01-10_20-34-00.png", &png); // missing
+    scan(&fx);
+    let svc = MetadataService::new(&fx.conn);
+    let st = |n: &str| svc.status(id_of(&fx, n), OFFSET, now()).unwrap();
+
+    let s = st("VRChat_2026-01-10_20-30-00.000.png");
+    assert_eq!((s.xmp, s.writable, s.writable_after_download, s.reason, s.removable), (XmpState::None, true, false, None, false));
+
+    let s = st("vrc_2026-01-10_20-31-00.png");
+    assert_eq!((s.xmp, s.writable, s.reason, s.removable), (XmpState::Other, false, Some(SkipReason::HasMetadata), false));
+
+    let ours = id_of(&fx, "VRChat_2026-01-10_20-32-00.000.png");
+    assert_eq!(svc.apply_write(ours, OFFSET, now()).unwrap(), MetaOutcome::Done);
+    let s = svc.status(ours, OFFSET, now()).unwrap();
+    assert_eq!((s.xmp, s.writable, s.reason, s.removable), (XmpState::Ours, false, Some(SkipReason::HasMetadata), true));
+
+    mark_online(&fx, id_of(&fx, "VRChat_2026-01-10_20-33-00.000.png"));
+    let s = st("VRChat_2026-01-10_20-33-00.000.png");
+    assert_eq!((s.xmp, s.writable, s.writable_after_download, s.reason), (XmpState::Unknown, false, true, None));
+
+    let s = st("VRChat_2026-01-11_10-00-00.000.png");
+    assert_eq!((s.xmp, s.writable, s.reason), (XmpState::None, false, Some(SkipReason::NoLog)));
+
+    fs::remove_file(photos_dir(&fx).join("gone_2026-01-10_20-34-00.png")).unwrap();
+    let s = st("gone_2026-01-10_20-34-00.png");
+    assert_eq!((s.xmp, s.writable, s.reason), (XmpState::Unknown, false, Some(SkipReason::Missing)));
+
+    let json = serde_json::to_value(svc.status(ours, OFFSET, now()).unwrap()).unwrap();
+    assert_eq!(json["xmp"], "ours");
+    assert_eq!(json["writableAfterDownload"], false);
+    assert_eq!(json["reason"], "hasMetadata");
 }
 
 #[test]

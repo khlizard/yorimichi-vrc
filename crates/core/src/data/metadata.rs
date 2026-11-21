@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::fs::Metadata;
 use std::path::Path;
 
-use chrono::{Duration, NaiveDate, NaiveDateTime};
+use chrono::NaiveDateTime;
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
@@ -25,10 +25,8 @@ use crate::{Error, Result};
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum MetaTarget {
+    /// Specific photos (the photo context menu uses one).
     Ids { ids: Vec<i64> },
-    Day { day: NaiveDate },
-    Album { album_id: i64 },
-    Range { from: NaiveDate, to: NaiveDate },
     /// Every photo in the library that is not flagged missing.
     All,
 }
@@ -107,6 +105,35 @@ pub enum MetaOutcome {
     Failed(String),
 }
 
+/// What the file's XMP is, as far as can be told without downloading it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum XmpState {
+    None,
+    /// Written by this app (can be removed again).
+    Ours,
+    /// Written by VRChat or another tool.
+    Other,
+    /// Online-only, missing or unreadable file.
+    Unknown,
+}
+
+/// Metadata state of one photo, for its context menu and info dialog. Reads at most the
+/// header of a local file; never an online-only one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaStatus {
+    pub xmp: XmpState,
+    /// Metadata can be written now.
+    pub writable: bool,
+    /// Online-only, and passes every check possible without downloading it.
+    pub writable_after_download: bool,
+    /// Why it cannot be written (`None` when `writable` or `writable_after_download`).
+    pub reason: Option<SkipReason>,
+    /// Carries metadata written by this app that can be removed now.
+    pub removable: bool,
+}
+
 /// Result of [`MetadataService::apply_write_downloading`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadOutcome {
@@ -132,12 +159,6 @@ pub struct MetadataService<'a> {
     conn: &'a Connection,
 }
 
-/// `[start, end)` of a logical day as stored timestamps (same rule as the timeline).
-fn day_window(day: NaiveDate, day_start_hour: u32) -> (String, String) {
-    let start = day.and_hms_opt(day_start_hour.min(23), 0, 0).expect("hour is clamped to 0..=23");
-    (db::ts(start), db::ts(start + Duration::days(1)))
-}
-
 fn has_png_or_jpeg_extension(path: &Path) -> bool {
     path.extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
@@ -149,11 +170,9 @@ impl<'a> MetadataService<'a> {
         Self { conn }
     }
 
-    /// Photo ids of a target. Day / Range skip photos flagged missing (like the timeline);
-    /// Album keeps them (they are classified `Missing` later); Ids keeps the given order and
-    /// drops unknown and repeated ids.
-    pub fn resolve(&self, target: &MetaTarget, day_start_hour: u32) -> Result<Vec<i64>> {
-        let by_time = "SELECT id FROM photos WHERE missing = 0 AND taken_at >= @s AND taken_at < @e ORDER BY taken_at, id";
+    /// Photo ids of a target. Ids keeps the given order and drops unknown and repeated ids
+    /// (missing ones are kept and classified `Missing` later); All skips rows flagged missing.
+    pub fn resolve(&self, target: &MetaTarget) -> Result<Vec<i64>> {
         match target {
             MetaTarget::Ids { ids } => {
                 let mut seen = HashSet::new();
@@ -168,23 +187,6 @@ impl<'a> MetadataService<'a> {
                 }
                 Ok(out)
             }
-            MetaTarget::Day { day } => {
-                let (s, e) = day_window(*day, day_start_hour);
-                Ok(query_rows(self.conn, by_time, &[("@s", &s), ("@e", &e)], |r| r.get(0))?)
-            }
-            MetaTarget::Range { from, to } => {
-                if from > to {
-                    return Ok(Vec::new());
-                }
-                let (s, e) = (db::ts(from.and_time(Default::default())), db::ts((*to + Duration::days(1)).and_time(Default::default())));
-                Ok(query_rows(self.conn, by_time, &[("@s", &s), ("@e", &e)], |r| r.get(0))?)
-            }
-            MetaTarget::Album { album_id } => Ok(query_rows(
-                self.conn,
-                "SELECT photo_id FROM album_photos WHERE album_id = @a ORDER BY position, photo_id",
-                &[("@a", album_id)],
-                |r| r.get(0),
-            )?),
             MetaTarget::All => {
                 Ok(query_rows(self.conn, "SELECT id FROM photos WHERE missing = 0 ORDER BY taken_at, id", &[], |r| r.get(0))?)
             }
@@ -346,6 +348,41 @@ impl<'a> MetadataService<'a> {
         Ok(match <[_; 1]>::try_from(locals) {
             Ok([(name, id)]) => (Some(name), Some(id)),
             Err(_) => (None, None),
+        })
+    }
+
+    /// See [`MetaStatus`].
+    pub fn status(&self, photo_id: i64, utc_offset_minutes: i32, now: NaiveDateTime) -> Result<MetaStatus> {
+        let blocked = |reason| MetaStatus {
+            xmp: XmpState::Unknown,
+            writable: false,
+            writable_after_download: false,
+            reason: Some(reason),
+            removable: false,
+        };
+        let (row, md) = match self.locate(photo_id)? {
+            Ok(x) => x,
+            Err(r) => return Ok(blocked(r)),
+        };
+        let online = row.online_only || is_online_only(&md);
+        let xmp = if online {
+            XmpState::Unknown
+        } else {
+            match xmp_presence(Path::new(&row.path)) {
+                Ok(XmpPresence::None) => XmpState::None,
+                Ok(XmpPresence::Ours) => XmpState::Ours,
+                Ok(XmpPresence::Other) => XmpState::Other,
+                Err(_) => XmpState::Unknown,
+            }
+        };
+        let removable = xmp == XmpState::Ours && !md.permissions().readonly();
+        let verdict = self.write_fields(row, &md, !online, utc_offset_minutes, now)?;
+        Ok(MetaStatus {
+            xmp,
+            writable: !online && verdict.is_ok(),
+            writable_after_download: online && verdict.is_ok(),
+            reason: verdict.err(),
+            removable,
         })
     }
 

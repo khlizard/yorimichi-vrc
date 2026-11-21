@@ -220,7 +220,15 @@ export function SessionsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [worldText]);
 
-  useImperativeHandle(ref, () => ({ refresh: () => void reload(), selectVisitById }));
+  useImperativeHandle(ref, () => ({
+    refresh: () => void reload(),
+    selectVisitById,
+    getView: () => ({ visitId: selectedIdRef.current }),
+    restoreView: (v: unknown) => {
+      const id = (v as { visitId: number | null } | null)?.visitId ?? null;
+      if (id != null && id !== selectedIdRef.current) void selectVisitById(id);
+    },
+  }));
 
   const visible = useMemo(() => (hideSelf ? players.filter((p) => !p.isLocal) : players), [players, hideSelf]);
   const sel = list.find((r) => r.id === selectedId) ?? null;
@@ -320,6 +328,7 @@ export function SessionsTab({
         <PhotoStrip
           photos={visitPhotos}
           onOpen={setLbIndex}
+          onFavoriteChanged={(id, fav) => setVisitPhotos((l) => l.map((x) => (x.id === id ? { ...x, favorite: fav } : x)))}
           actions={
             <>
               <button type="button" onClick={() => void createAlbumHere()}>

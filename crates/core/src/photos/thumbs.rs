@@ -28,6 +28,12 @@ fn decode(src: &Path) -> Result<DynamicImage> {
         .map_err(img_err)
 }
 
+/// Full-size RGBA8 pixels of a photo, `(width, height, bytes)` (e.g. for the clipboard).
+pub fn rgba_pixels(src: &Path) -> Result<(u32, u32, Vec<u8>)> {
+    let img = decode(src)?.to_rgba8();
+    Ok((img.width(), img.height(), img.into_raw()))
+}
+
 /// `None` for pixel formats this path does not handle (CMYK, 16-bit) or on a decode error;
 /// the caller then falls back to `image`.
 fn decode_jpeg(data: &[u8]) -> Option<DynamicImage> {

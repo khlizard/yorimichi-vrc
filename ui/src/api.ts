@@ -348,6 +348,20 @@ export const revealPhoto = (id: number) => invoke<void>("reveal_photo", { id });
 /** Open with the default app. */
 export const openPhoto = (id: number) => invoke<void>("open_photo", { id });
 
+export interface PhotoFileInfo {
+  path: string;
+  folder: string;
+  exists: boolean;
+  onlineOnly: boolean;
+  size: number | null;
+  /** "YYYY-MM-DD HH:MM:SS" */
+  modified: string | null;
+  readOnly: boolean;
+}
+export const photoFileInfo = (id: number) => invoke<PhotoFileInfo>("photo_file_info", { id });
+/** Copy the full image to the clipboard (rejects for online-only / missing files). */
+export const copyPhotoImage = (id: number) => invoke<void>("copy_photo_image", { id });
+
 /** 400px JPEG thumbnail (vrcphoto scheme; 404 for missing / online-only photos). */
 export const thumbUrl = (id: number): string => convertFileSrc(`thumb/${id}`, "vrcphoto");
 /** Original image file. */
