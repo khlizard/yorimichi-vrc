@@ -76,6 +76,8 @@ pub fn run() {
             commands::autostart_get,
             commands::copy_text,
             commands::open_url,
+            commands::about_info,
+            commands::open_licenses,
             log_commands::recent_players,
             log_commands::search_players,
             log_commands::encounters,

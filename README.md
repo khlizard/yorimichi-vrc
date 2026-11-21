@@ -31,7 +31,7 @@ VRChat の非公式ツールです。VRChat Inc. とは関係ありません。
 1. [Releases](https://github.com/khlizard/yorimichi-vrc/releases) から `Yorimichi-win-Setup.exe` をダウンロードして実行します。
 2. インストーラーに署名が無いため、Windows の警告が出ます。「詳細情報」→「実行」で進めます。
 
-新しい版が出ると、アプリが自動でダウンロードし、再起動するかを尋ねます。
+新しい版が出ると、アプリが自動でダウンロードし、再起動するかを尋ねます。バージョンの確認と手動での更新は、「ヘルプ → Yorimichi について…」から行えます。
 
 ## 使い方
 

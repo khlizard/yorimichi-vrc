@@ -174,9 +174,8 @@ pub async fn backup_now(app: AppHandle) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub async fn check_update(app: AppHandle) -> CmdResult<()> {
-    update::check(app, true).await;
-    Ok(())
+pub async fn check_update(app: AppHandle) -> CmdResult<update::CheckResult> {
+    Ok(update::check(app).await)
 }
 
 #[tauri::command]
@@ -213,6 +212,30 @@ pub(crate) fn write_clipboard(mut write: impl FnMut(&mut arboard::Clipboard) -> 
         }
     }
     Err("クリップボードが他のアプリ (IME のクリップボード監視など) に使用中のため、コピーできませんでした。もう一度お試しください。".to_string())
+}
+
+/// The third-party license list that pack.ps1 puts next to the exe. Dev builds have none.
+fn licenses_file() -> Option<std::path::PathBuf> {
+    let path = std::env::current_exe().ok()?.parent()?.join("THIRD-PARTY-LICENSES.html");
+    path.is_file().then_some(path)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AboutInfo {
+    version: String,
+    licenses_available: bool,
+}
+
+#[tauri::command]
+pub async fn about_info(app: AppHandle) -> CmdResult<AboutInfo> {
+    Ok(AboutInfo { version: app.package_info().version.to_string(), licenses_available: licenses_file().is_some() })
+}
+
+#[tauri::command]
+pub async fn open_licenses(app: AppHandle) -> CmdResult<()> {
+    let path = licenses_file().ok_or("ライセンスの一覧は、インストーラーで入れた版にだけ含まれます。")?;
+    app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

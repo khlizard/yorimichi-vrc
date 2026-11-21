@@ -6,14 +6,14 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::app::{self, AppState};
 use crate::settings::ThemeSetting;
-use crate::{maintenance, update};
+use crate::maintenance;
 
 const ID_MENU_IMPORT: &str = "menu_import";
 const ID_MENU_EXPORT: &str = "menu_export";
 const ID_MENU_BACKUP: &str = "menu_backup";
 const ID_MENU_METADATA: &str = "menu_metadata";
 const ID_MENU_SETTINGS: &str = "menu_settings";
-const ID_MENU_UPDATE: &str = "menu_update";
+const ID_MENU_ABOUT: &str = "menu_about";
 const ID_MENU_EXIT: &str = "menu_exit";
 const ID_MENU_THEME_AUTO: &str = "menu_theme_auto";
 const ID_MENU_THEME_LIGHT: &str = "menu_theme_light";
@@ -43,10 +43,12 @@ pub(crate) fn handle_menu(app: &AppHandle, id: &str) {
             app::show_main(app);
             let _ = app.emit("open-period-dialog", ());
         }
-        ID_MENU_SETTINGS | ID_TRAY_SETTINGS => app::open_settings(app),
-        ID_MENU_UPDATE => {
-            tauri::async_runtime::spawn(update::check(app.clone(), true));
+        ID_MENU_ABOUT => {
+            // The dialog (version, update check, licenses) is drawn by the UI.
+            app::show_main(app);
+            let _ = app.emit("open-about-dialog", ());
         }
+        ID_MENU_SETTINGS | ID_TRAY_SETTINGS => app::open_settings(app),
         ID_MENU_THEME_AUTO => app::choose_theme(app, ThemeSetting::Auto),
         ID_MENU_THEME_LIGHT => app::choose_theme(app, ThemeSetting::Light),
         ID_MENU_THEME_DARK => app::choose_theme(app, ThemeSetting::Dark),
@@ -84,8 +86,8 @@ pub(crate) fn build_window_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wr
     let period = MenuItem::with_id(app, ID_MENU_PERIOD, "期間で絞り込む…", true, None::<&str>)?;
     let view = Submenu::with_items(app, "表示(&V)", true, &[&theme_menu, &sep_view, &period])?;
     *app.state::<AppState>().theme_items.lock().unwrap() = theme_items;
-    let update = MenuItem::with_id(app, ID_MENU_UPDATE, "更新を確認", true, None::<&str>)?;
-    let help = Submenu::with_items(app, "ヘルプ(&H)", true, &[&update])?;
+    let about = MenuItem::with_id(app, ID_MENU_ABOUT, "Yorimichi について(&A)…", true, None::<&str>)?;
+    let help = Submenu::with_items(app, "ヘルプ(&H)", true, &[&about])?;
     Menu::with_items(app, &[&file, &view, &help])
 }
 

@@ -3,6 +3,7 @@ import { importNow, type Settings } from "./api";
 import { DialogProvider, useDialog } from "./components/Dialog";
 import { MetadataProvider, useMetadataDialog } from "./features/metadata/MetadataProvider";
 import { errText } from "./components/util";
+import { AboutDialog } from "./components/AboutDialog";
 import { PeriodDialog, periodDate, type Period } from "./components/PeriodDialog";
 import { AvatarsTab } from "./features/logs/AvatarsTab";
 import { LogsTab } from "./features/logs/LogsTab";
@@ -39,6 +40,7 @@ function Main() {
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [periodOpen, setPeriodOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [status, setStatus] = useState("");
   const [importing, setImporting] = useState(false);
   // Latest settings, kept for features that depend on them (badges, day boundary).
@@ -87,6 +89,7 @@ function Main() {
     choose,
     openMetadata: metadata.open,
     openPeriod: () => setPeriodOpen(true),
+    openAbout: () => setAboutOpen(true),
     refreshAll,
     refreshAfterAutoImport,
     hasPending,
@@ -210,6 +213,7 @@ function Main() {
           }}
         />
       )}
+      {aboutOpen && <AboutDialog close={() => setAboutOpen(false)} />}
       <div className="tabbody">
         {panel("timeline", <TimelineTab ref={refs.timeline} active={tab === "timeline"} dayStartHour={settings?.DayStartHour ?? 0} />)}
         {panel(

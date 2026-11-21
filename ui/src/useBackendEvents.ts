@@ -7,6 +7,7 @@ import {
   onAskTray,
   onImportFinished,
   onImporting,
+  onOpenAboutDialog,
   onOpenPeriodDialog,
   onSettingsChanged,
   onStatus,
@@ -29,6 +30,7 @@ interface Options {
   choose(opts: ChooseOptions): Promise<string | null>;
   openMetadata(opts: MetadataOpenOptions): void;
   openPeriod(): void;
+  openAbout(): void;
   refreshAll(): void;
   /** Reload what an automatic import calls for; true while some list is still stale. */
   refreshAfterAutoImport(): boolean;
@@ -114,6 +116,7 @@ export function useBackendEvents(opts: Options) {
       ),
     );
     unlisten.push(onOpenPeriodDialog(() => o.current.openPeriod()));
+    unlisten.push(onOpenAboutDialog(() => o.current.openAbout()));
     unlisten.push(
       onImportFinished(({ changed, automatic }) => {
         if (changed && !automatic) {

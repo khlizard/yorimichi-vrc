@@ -216,6 +216,22 @@ export interface UpdateReady {
   version: string;
 }
 
+/** Result of an update check (`check_update`). */
+export type UpdateCheck =
+  /** No newer version; `version` is the installed one. */
+  | { kind: "latest"; version: string }
+  /** A newer version is downloaded and waits for a restart (`applyUpdate`). */
+  | { kind: "ready"; version: string }
+  /** Not installed with the installer (dev run or portable copy): cannot update itself. */
+  | { kind: "notInstalled" }
+  | { kind: "failed"; message: string };
+
+export interface AboutInfo {
+  version: string;
+  /** THIRD-PARTY-LICENSES.html sits next to the exe (installed builds only). */
+  licensesAvailable: boolean;
+}
+
 export interface ImportFinished {
   /** true when new data was imported, rows were pruned, or an error occurred (reload lists). */
   changed: boolean;
@@ -243,8 +259,8 @@ export const pickFolder = (title?: string) => invoke<string | null>("pick_folder
 export const answerTrayChoice = (stay: boolean) => invoke<void>("answer_tray_choice", { stay });
 /** Backs up the DB now; the result arrives via status events. */
 export const backupNow = () => invoke<void>("backup_now");
-/** Manual update check; the result arrives via status / "update-ready" events. */
-export const checkUpdate = () => invoke<void>("check_update");
+/** Looks for a newer version and downloads it before resolving. */
+export const checkUpdate = () => invoke<UpdateCheck>("check_update");
 /** Applies the downloaded update and restarts the app. */
 export const applyUpdate = () => invoke<void>("apply_update");
 export const autostartGet = () => invoke<boolean>("autostart_get");
@@ -252,6 +268,9 @@ export const autostartGet = () => invoke<boolean>("autostart_get");
 export const copyText = (text: string) => invoke<void>("copy_text", { text });
 /** Opens in the default browser. */
 export const openUrl = (url: string) => invoke<void>("open_url", { url });
+export const aboutInfo = () => invoke<AboutInfo>("about_info");
+/** Opens THIRD-PARTY-LICENSES.html in the default browser. */
+export const openLicenses = () => invoke<void>("open_licenses");
 
 export const recentPlayers = (from: string | null, to: string | null, offset: number, limit: number) =>
   invoke<PlayerHit[]>("recent_players", { from, to, offset, limit });
@@ -370,6 +389,8 @@ export const onSettingsChanged = (cb: (s: Settings) => void): Promise<UnlistenFn
 /** An update was downloaded and waits for a restart. */
 export const onUpdateReady = (cb: (e: UpdateReady) => void): Promise<UnlistenFn> =>
   listen<UpdateReady>("update-ready", (e) => cb(e.payload));
+/** Menu ヘルプ → Yorimichi について…: open the About dialog. */
+export const onOpenAboutDialog = (cb: () => void): Promise<UnlistenFn> => listen("open-about-dialog", () => cb());
 /** Menu 表示 → 期間で絞り込む…: open the date range dialog. */
 export const onOpenPeriodDialog = (cb: () => void): Promise<UnlistenFn> => listen("open-period-dialog", () => cb());
 /** The photo library changed (scan added / updated / marked missing, or visit links changed). */

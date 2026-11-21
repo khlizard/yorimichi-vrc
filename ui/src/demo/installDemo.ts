@@ -1,6 +1,6 @@
 // Demo mode: replaces the Tauri IPC with dummy data so the UI runs in a plain browser.
 // Loaded only by the dev server with `?demo` (see main.tsx); never part of a release build.
-// `?tab=<id>` opens that tab, `?theme=dark` switches the theme, `?open=period` opens the period dialog.
+// `?tab=<id>` opens that tab, `?theme=dark` switches the theme, `?open=period` / `?open=about` opens that dialog.
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type { Settings } from "../api";
@@ -34,6 +34,8 @@ const handlers: Record<string, (a: Args) => unknown> = {
   notification_kinds: () => [],
   photo_detail: () => null,
   player_profile: () => null,
+  about_info: () => ({ version: data.status.version, licensesAvailable: true }),
+  check_update: () => ({ kind: "latest", version: data.status.version }),
 };
 
 mockWindows("main");
@@ -86,3 +88,5 @@ if (tab) whenReady(() => document.getElementById(`tab-${tab}`)?.click());
 
 // `?open=period`: what the menu item 表示 → 期間で絞り込む… sends.
 if (params.get("open") === "period") whenReady(() => void emit("open-period-dialog"));
+// `?open=about`: what ヘルプ → Yorimichi について… sends.
+if (params.get("open") === "about") whenReady(() => void emit("open-about-dialog"));

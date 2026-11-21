@@ -91,3 +91,30 @@
 .modal-footer .period-clear {
   margin-right: auto;
 }
+
+/* ヘルプ → Yorimichi について dialog */
+.about-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 380px;
+  white-space: normal;
+}
+.about-name {
+  font-size: 16px;
+  font-weight: bold;
+}
+.about-note {
+  margin: 0;
+  color: var(--muted);
+}
+.about-update {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.about-update [role="status"]:empty {
+  display: none;
+}

@@ -7,7 +7,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use velopack::sources::{FileSource, HttpSource};
-use velopack::{UpdateCheck, UpdateInfo, UpdateManager};
+use velopack::{UpdateCheck, UpdateManager};
 
 use crate::app::{self, AppState};
 
@@ -29,6 +29,19 @@ struct UpdateReady {
     version: String,
 }
 
+/// What a check found. The About dialog shows it; the automatic check only acts on `Ready`.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CheckResult {
+    /// No newer version. `version` is the installed one.
+    Latest { version: String },
+    /// A newer version is downloaded and waits for a restart.
+    Ready { version: String },
+    /// Not a Velopack-installed build (dev run or portable copy), so it cannot update itself.
+    NotInstalled,
+    Failed { message: String },
+}
+
 fn make_manager(feed: &str) -> Result<UpdateManager, velopack::Error> {
     let lower = feed.to_ascii_lowercase();
     if lower.starts_with("http://") || lower.starts_with("https://") {
@@ -44,62 +57,44 @@ pub fn start(app: &AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(FIRST_CHECK_DELAY).await;
         loop {
-            check(app.clone(), false).await;
+            // Ask about a downloaded update once; do not ask again while it waits for a restart.
+            let waiting = app.state::<AppState>().pending_update.lock().unwrap().is_some();
+            if !waiting {
+                if let CheckResult::Ready { version } = check(app.clone()).await {
+                    let _ = app.emit("update-ready", UpdateReady { version });
+                }
+            }
             tokio::time::sleep(CHECK_INTERVAL).await;
         }
     });
 }
 
-pub async fn check(app: AppHandle, manual: bool) {
-    let feed = effective_feed(&app.state::<AppState>().settings.lock().unwrap().update_feed);
-    // Do not re-download while an update is already waiting for a restart.
+/// Looks for a newer version and downloads it. An update already downloaded is reported as
+/// `Ready` without checking again.
+pub async fn check(app: AppHandle) -> CheckResult {
     if let Some(info) = app.state::<AppState>().pending_update.lock().unwrap().as_ref() {
-        if manual {
-            let _ = app.emit("update-ready", UpdateReady { version: info.TargetFullRelease.Version.to_string() });
-        }
-        return;
+        return CheckResult::Ready { version: info.TargetFullRelease.Version.to_string() };
     }
+    let feed = effective_feed(&app.state::<AppState>().settings.lock().unwrap().update_feed);
 
-    let app2 = app.clone();
-    let r = tauri::async_runtime::spawn_blocking(move || -> Result<Option<UpdateInfo>, String> {
+    let r = tauri::async_runtime::spawn_blocking(move || -> Result<CheckResult, String> {
         let Ok(manager) = make_manager(&feed) else {
-            // Not a Velopack-installed build (e.g. dev run or portable copy).
-            if manual {
-                app::set_status(&app2, "インストール版でのみ更新できます");
-            }
-            return Ok(None);
+            return Ok(CheckResult::NotInstalled);
         };
-        match manager.check_for_updates() {
-            Ok(UpdateCheck::UpdateAvailable(info)) => {
-                app::set_status(&app2, format!("更新をダウンロード中: {}", info.TargetFullRelease.Version));
+        match manager.check_for_updates().map_err(|e| e.to_string())? {
+            UpdateCheck::UpdateAvailable(info) => {
+                let version = info.TargetFullRelease.Version.to_string();
+                app::set_status(&app, format!("更新をダウンロード中: {version}"));
                 manager.download_updates(&info, None).map_err(|e| e.to_string())?;
-                Ok(Some(*info))
+                *app.state::<AppState>().pending_update.lock().unwrap() = Some(*info);
+                app::set_status(&app, format!("更新をダウンロードしました: {version}"));
+                Ok(CheckResult::Ready { version })
             }
-            Ok(_) => {
-                if manual {
-                    app::set_status(&app2, format!("最新版です ({})", manager.get_current_version_as_string()));
-                }
-                Ok(None)
-            }
-            Err(e) => Err(e.to_string()),
+            _ => Ok(CheckResult::Latest { version: manager.get_current_version_as_string() }),
         }
     })
     .await;
-
-    match app::flatten_join(r) {
-        Ok(Some(info)) => {
-            let version = info.TargetFullRelease.Version.to_string();
-            *app.state::<AppState>().pending_update.lock().unwrap() = Some(info);
-            app::set_status(&app, format!("更新をダウンロードしました: {version}"));
-            let _ = app.emit("update-ready", UpdateReady { version });
-        }
-        Ok(None) => {}
-        Err(msg) => {
-            if manual {
-                app::set_status(&app, format!("更新の確認エラー: {msg}"));
-            }
-        }
-    }
+    app::flatten_join(r).unwrap_or_else(|message| CheckResult::Failed { message })
 }
 
 /// Applies the downloaded update and restarts; on success the process exits and this does not return.
@@ -129,5 +124,15 @@ mod tests {
         assert_eq!(effective_feed("  \t"), DEFAULT_FEED);
         assert_eq!(effective_feed(" D:\\feed "), "D:\\feed");
         assert_eq!(effective_feed("https://example.com/f"), "https://example.com/f");
+    }
+
+    /// The About dialog reads this shape (`UpdateCheck` in ui/src/api.ts).
+    #[test]
+    fn check_result_json_matches_the_ui() {
+        let json = |r: CheckResult| serde_json::to_string(&r).unwrap();
+        assert_eq!(json(CheckResult::Latest { version: "1.0.0".into() }), r#"{"kind":"latest","version":"1.0.0"}"#);
+        assert_eq!(json(CheckResult::Ready { version: "1.1.0".into() }), r#"{"kind":"ready","version":"1.1.0"}"#);
+        assert_eq!(json(CheckResult::NotInstalled), r#"{"kind":"notInstalled"}"#);
+        assert_eq!(json(CheckResult::Failed { message: "x".into() }), r#"{"kind":"failed","message":"x"}"#);
     }
 }

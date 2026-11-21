@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   autostartGet,
   backupNow,
-  checkUpdate,
   defaultNoisePatterns,
   getSettings,
   getStatus,
@@ -368,14 +367,12 @@ export function SettingsTab({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="section-label">更新</div>
-          <div>現在のバージョン: {status?.version ?? "-"}</div>
           <label htmlFor="update-feed" className="field-label">
             更新の配布元 (URL またはフォルダ)
           </label>
           <input id="update-feed" type="text" value={s.UpdateFeed} onChange={(e) => patch({ UpdateFeed: e.target.value })} />
-          <div className="footnote">空欄のときは、公開されている最新版 (GitHub) を確認します。通常は空欄のままで構いません。</div>
-          <div className="button-row">
-            <button onClick={run(checkUpdate)}>更新を確認</button>
+          <div className="footnote">
+            空欄のときは、公開されている最新版 (GitHub) を確認します。通常は空欄のままで構いません。バージョンの確認と手動での更新は「ヘルプ → Yorimichi について」から行えます。
           </div>
         </div>
       </div>
