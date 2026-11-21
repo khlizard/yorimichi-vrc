@@ -158,10 +158,11 @@ pub fn status_dto(app: &AppHandle) -> StatusDto {
     }
 }
 
+/// The title carries no path: a default path contains the Windows user name, and titles end up
+/// in screenshots. The settings window shows which database file is in use.
 pub fn update_title(app: &AppHandle) {
-    let path = app.state::<AppState>().settings.lock().unwrap().resolved_db_path();
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.set_title(&format!("VrcLogger \u{2014} {}", path.display()));
+        let _ = w.set_title("VrcLogger");
     }
 }
 
@@ -335,6 +336,7 @@ pub async fn run_import(app: AppHandle, automatic: bool) {
 
 pub async fn reimport_all(app: AppHandle) {
     if app.state::<AppState>().importing.load(Ordering::SeqCst) {
+        set_status(&app, "ほかの処理の実行中です。終わってから、もう一度「再取り込み」を実行してください。");
         return;
     }
     reset_prune(&app);

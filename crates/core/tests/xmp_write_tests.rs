@@ -19,6 +19,7 @@ fn fields() -> XmpFields {
         author: Some("Tester".into()),
         author_id: Some(USR.into()),
         create_date: dt(2026, 11, 19, 23, 9, 58),
+        create_offset_minutes: 540,
         utc_offset_minutes: 540,
         world_id: WRLD.into(),
         world_name: "Sample World".into(),
@@ -105,8 +106,11 @@ fn build_xmp_round_trips_and_escapes() {
     assert_eq!(p.world_id.as_deref(), Some(WRLD));
     assert_eq!(p.create_date, Some(f.create_date));
 
-    f.utc_offset_minutes = -(5 * 60 + 30);
-    assert!(build_xmp(&f).contains("2026-11-19T23:09:58-05:30"));
+    // The capture time and the time of writing each carry their own offset.
+    f.create_offset_minutes = -(5 * 60 + 30);
+    let x = build_xmp(&f);
+    assert!(x.contains("<xmp:CreateDate>2026-11-19T23:09:58-05:30</xmp:CreateDate>"));
+    assert!(x.contains("<vrclogger:WrittenAt>2026-11-21T12:00:00+09:00</vrclogger:WrittenAt>"));
 }
 
 #[test]
@@ -310,6 +314,7 @@ fn probe_real_copies() {
             author: Some("Probe Author".into()),
             author_id: Some("usr_11111111-1111-1111-1111-111111111111".into()),
             create_date: ts,
+            create_offset_minutes: 540,
             utc_offset_minutes: 540,
             world_id: "wrld_11111111-1111-1111-1111-111111111111".into(),
             world_name: "Probe & <World> 日本語".into(),

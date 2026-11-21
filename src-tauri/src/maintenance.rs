@@ -71,8 +71,12 @@ pub fn start(app: &AppHandle) {
             if app.state::<AppState>().importing.load(Ordering::SeqCst) {
                 continue;
             }
+            // VR controllers do not count as keyboard/mouse input, so a VR session looks idle:
+            // never run maintenance while VRChat itself is running.
             let idle_enough = tauri::async_runtime::spawn_blocking(|| {
-                idle::idle_seconds() >= IDLE_REQUIRED_SECS && idle::cpu_busy_fraction(CPU_SAMPLE) < CPU_BUSY_LIMIT
+                idle::idle_seconds() >= IDLE_REQUIRED_SECS
+                    && !idle::process_running("VRChat.exe")
+                    && idle::cpu_busy_fraction(CPU_SAMPLE) < CPU_BUSY_LIMIT
             })
             .await
             .unwrap_or(false);

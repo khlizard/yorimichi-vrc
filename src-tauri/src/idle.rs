@@ -23,6 +23,45 @@ pub fn idle_seconds() -> u64 {
     0
 }
 
+/// True if a process with this executable name (e.g. `VRChat.exe`, compared without case) is
+/// running. False when the process list cannot be read.
+#[cfg(windows)]
+pub fn process_running(exe_name: &str) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+
+    // SAFETY: plain snapshot of the process list; the handle is closed below.
+    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snap == INVALID_HANDLE_VALUE {
+        return false;
+    }
+    // SAFETY: PROCESSENTRY32W is plain data; dwSize is set as the API requires.
+    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+    let mut found = false;
+    // SAFETY: `snap` is a valid snapshot handle and `entry` a valid, sized PROCESSENTRY32W.
+    let mut more = unsafe { Process32FirstW(snap, &mut entry) } != 0;
+    while more {
+        let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+        if String::from_utf16_lossy(&entry.szExeFile[..len]).eq_ignore_ascii_case(exe_name) {
+            found = true;
+            break;
+        }
+        // SAFETY: as above.
+        more = unsafe { Process32NextW(snap, &mut entry) } != 0;
+    }
+    // SAFETY: `snap` came from CreateToolhelp32Snapshot and is closed once.
+    unsafe { CloseHandle(snap) };
+    found
+}
+
+#[cfg(not(windows))]
+pub fn process_running(_exe_name: &str) -> bool {
+    false
+}
+
 #[cfg(windows)]
 fn cpu_times() -> Option<(u64, u64, u64)> {
     use windows_sys::Win32::Foundation::FILETIME;

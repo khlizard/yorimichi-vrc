@@ -1,39 +1,11 @@
-/* Photo screens: dark surface scoped to .photo-surface (see DESIGN.md). */
+/* Photo screens: always dark. The palette itself is the dark one in styles.css (see DESIGN.md). */
 .photo-surface {
-  --bg: #16171a;
-  --fg: #e8e8ea;
-  --muted: #a3a5ab;
-  --faint: #9a9ca3;
-  --line: #2c2e33;
-  --line-soft: #24262b;
-  --tile: #22242a;
-  --star: #e3b341;
-  --button-bg: #2a2c32;
-  --button-hover: #353840;
-  --button-border: #4a4d55;
-  --header-bg: #1d1f23;
-  /* Tokens the app theme changes but this surface keeps at the light-theme values. */
-  --status: #555555;
-  --local-bg: #fff7de;
-  --select-bg: #cce4f7;
-  --select-fg: #000000;
-  --select-inactive: #e3e3e3;
-  --surface: #ffffff;
-  --overlay: rgba(255, 255, 255, 0.6);
-  --link: #0b57b0;
-  --ok: #2e7d32;
-  --focus: #0a64c8;
   background: var(--bg);
   color: var(--fg);
-  color-scheme: dark;
   font-variant-numeric: tabular-nums;
 }
 .photo-surface button {
   border-radius: 3px;
-}
-.photo-surface button:disabled {
-  color: #80838a;
-  border-color: #34363c;
 }
 .photo-surface select {
   background: var(--button-bg);
@@ -56,7 +28,7 @@
 .photo-surface button[aria-pressed="true"]:not(.pg-tile) {
   background: var(--focus);
   border-color: var(--focus);
-  color: #fff;
+  color: var(--on-accent);
 }
 .sr-only {
   position: absolute;
@@ -242,6 +214,7 @@
 .pg-check.on {
   background: var(--focus);
   border-color: var(--focus);
+  color: var(--on-accent);
 }
 .pg-empty {
   padding: 40px 16px;

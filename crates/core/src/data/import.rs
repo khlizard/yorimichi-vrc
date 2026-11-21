@@ -106,11 +106,13 @@ impl<'a> ImportService<'a> {
             }
         };
         let (mut scanned, mut imported, mut skipped) = (0, 0, 0);
+        let mut missing_folders = 0;
         let mut candidates: Vec<PathBuf> = Vec::new();
         for folder in folders {
             let folder = folder.as_ref();
             if !folder.is_dir() {
                 report(&format!("フォルダなし(スキップ): {}", folder.display()));
+                missing_folders += 1;
                 continue;
             }
             for entry in std::fs::read_dir(folder)?.flatten() {
@@ -122,8 +124,8 @@ impl<'a> ImportService<'a> {
                 }
             }
         }
-        // Same log may exist in several folders (e.g. a copy in the repo and the live
-        // one VRChat is still writing) - import the largest copy of each name.
+        // Same log may exist in several folders (e.g. a saved copy and the live one
+        // VRChat is still writing) - import the largest copy of each name.
         let mut by_name: HashMap<String, (PathBuf, u64)> = HashMap::new();
         let mut order: Vec<String> = Vec::new();
         for path in candidates {
@@ -151,7 +153,12 @@ impl<'a> ImportService<'a> {
                 skipped += 1;
             }
         }
-        report(&format!("完了: {imported} 取り込み / {skipped} 変更なし"));
+        // The last message stays in the status bar, so a missing folder must be part of it.
+        let missing = match missing_folders {
+            0 => String::new(),
+            n => format!("（ログフォルダが {n} 件見つかりません。設定を確認してください）"),
+        };
+        report(&format!("完了: {imported} 取り込み / {skipped} 変更なし{missing}"));
         Ok(ImportSummary { scanned, imported, skipped })
     }
 

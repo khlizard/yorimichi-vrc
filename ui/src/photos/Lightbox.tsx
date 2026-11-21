@@ -184,7 +184,8 @@ export function Lightbox(p: LightboxProps) {
   if (!photo) return null;
 
   const onImageMenu = (e: React.MouseEvent) =>
-    menu.onContextMenu(e, photo, {
+    menu.onContextMenu(e, { ...photo, favorite: favOv.get(photo.id) ?? photo.favorite }, {
+      beforeNavigate: () => latest.current.onClose(),
       onFavoriteChanged: (pid, next) => {
         setFavOv((m) => new Map(m).set(pid, next));
         p.onFavoriteChanged?.(pid, next);

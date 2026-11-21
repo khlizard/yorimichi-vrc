@@ -31,7 +31,8 @@ const columns: Column<EncounterRow>[] = [
 
 export interface PlayersHandle extends TabHandle {
   /** Search players by display name (used when jumping from a photo). */
-  searchFor(name: string): void;
+  /** Searches by display name and selects that player (same names are told apart by id). */
+  searchFor(name: string, playerId: number): void;
 }
 
 export function PlayersTab({
@@ -58,6 +59,7 @@ export function PlayersTab({
   const selectedIdRef = useRef<number | null>(null);
   const [rows, setRows] = useState<EncounterRow[]>([]);
   const gen = useRef(0);
+  const wantId = useRef<number | null>(null);
   const encGen = useRef(0);
   const [tags, setTags] = useState<TagCount[]>([]);
   const [tagFilter, setTagFilter] = useState<number | null>(null);
@@ -179,7 +181,10 @@ export function PlayersTab({
     setList(page);
     setHasMore(tagFilterRef.current == null && page.length === PLAYER_PAGE_SIZE);
     void loadMarks(page.map((p) => p.id));
-    select((page.find((p) => p.id === keep) ?? page[0])?.id ?? null);
+    // A player asked for by id is shown even when the name search lists someone else first.
+    const want = wantId.current;
+    wantId.current = null;
+    select(want ?? (page.find((p) => p.id === keep) ?? page[0])?.id ?? null);
   };
 
   const loadMore = async () => {
@@ -207,12 +212,13 @@ export function PlayersTab({
       void loadTags();
     },
     loadedCount: () => playersRef.current.length,
-    searchFor: (name: string) => {
+    searchFor: (name: string, playerId: number) => {
       setText(name);
       tagFilterRef.current = null;
       setTagFilter(null);
       activeTerm.current = name.trim();
       selectedIdRef.current = null;
+      wantId.current = playerId;
       void reload();
     },
     getView: () => ({ text: activeTerm.current, tag: tagFilterRef.current, selectedId: selectedIdRef.current }),

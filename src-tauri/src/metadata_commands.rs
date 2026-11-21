@@ -6,7 +6,7 @@
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use chrono::{Local, NaiveDateTime};
+use chrono::{Local, LocalResult, NaiveDateTime, TimeZone};
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -100,10 +100,22 @@ impl MetaRunSummary {
     }
 }
 
-/// The UTC offset of the machine's local zone, in minutes. Core takes one offset per call and
-/// only ids are known here, so the current offset is used for every photo (Japan has no DST).
+/// The UTC offset of the machine's local zone right now, in minutes (dates the time of writing).
 fn local_offset_minutes() -> i32 {
     Local::now().offset().local_minus_utc() / 60
+}
+
+/// The UTC offset that applied at a local wall-clock time, in minutes. Differs from the current
+/// one across a daylight-saving change. A time skipped by the change falls back to the current offset.
+fn local_offset_at(t: NaiveDateTime) -> i32 {
+    match Local.from_local_datetime(&t) {
+        LocalResult::Single(d) | LocalResult::Ambiguous(d, _) => d.offset().local_minus_utc() / 60,
+        LocalResult::None => local_offset_minutes(),
+    }
+}
+
+fn service(conn: &rusqlite::Connection) -> MetadataService<'_> {
+    MetadataService::new(conn).with_capture_offset(local_offset_at)
 }
 
 fn make_plan(svc: &MetadataService, ids: &[i64], mode: Mode, now: NaiveDateTime) -> vrclogger_core::Result<MetaPlan> {
@@ -124,16 +136,20 @@ pub async fn metadata_plan(app: AppHandle, state: State<'_, AppState>, target: M
         return Err(BUSY_PLAN.to_string());
     }
     let db_path = db_path(&state);
+    const CHECKING: &str = "対象を確認中…";
     let previous = state.status.lock().unwrap().clone();
-    app::set_status(&app, "対象を確認中…");
+    app::set_status(&app, CHECKING);
     let r = tauri::async_runtime::spawn_blocking(move || -> Result<MetaPlan, String> {
         let conn = app::open_db(&db_path).map_err(|e| e.to_string())?;
-        let svc = MetadataService::new(&conn);
+        let svc = service(&conn);
         let ids = svc.resolve(&target).map_err(|e| e.to_string())?;
         make_plan(&svc, &ids, mode, Local::now().naive_local()).map_err(|e| e.to_string())
     })
     .await;
-    app::set_status(&app, previous);
+    // Put the earlier status back, unless something else reported in the meantime.
+    if *state.status.lock().unwrap() == CHECKING {
+        app::set_status(&app, previous);
+    }
     r.map_err(|e| e.to_string())?
 }
 
@@ -143,7 +159,7 @@ pub async fn photo_meta_status(state: State<'_, AppState>, id: i64) -> CmdResult
     let db_path = db_path(&state);
     tauri::async_runtime::spawn_blocking(move || -> Result<MetaStatus, String> {
         let conn = app::open_db(&db_path).map_err(|e| e.to_string())?;
-        MetadataService::new(&conn)
+        service(&conn)
             .status(id, local_offset_minutes(), Local::now().naive_local())
             .map_err(|e| e.to_string())
     })
@@ -215,7 +231,7 @@ fn run_blocking(
     allow_download: bool,
 ) -> Result<MetaRunSummary, String> {
     let conn = app::open_db(db_path).map_err(|e| e.to_string())?;
-    let svc = MetadataService::new(&conn);
+    let svc = service(&conn);
     let ids = svc.resolve(target).map_err(|e| e.to_string())?;
     let now = Local::now().naive_local();
     let plan = make_plan(&svc, &ids, mode, now).map_err(|e| e.to_string())?;

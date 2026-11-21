@@ -64,7 +64,7 @@ export function runBackIntercepts(): boolean {
   return false;
 }
 
-/** True if the element is rendered (not inside a hidden tab or other `display: none`). */
+/** True if the element is visible: rendered, and not inside an inactive tab (`visibility: hidden`). */
 export function isShown(el: Element | null): boolean {
-  return !!el && el.getClientRects().length > 0;
+  return !!el && el.checkVisibility({ visibilityProperty: true });
 }

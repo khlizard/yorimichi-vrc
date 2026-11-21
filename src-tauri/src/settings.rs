@@ -1,11 +1,13 @@
-//! Settings file: `%APPDATA%\VrcLogger\vrclogger.settings.json` (PascalCase keys, as in the WPF app).
+//! Settings file: `%APPDATA%\VrcLogger\vrclogger.settings.json` (PascalCase keys).
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+/// VRChat's data folder: the logs and its `config.json`.
 pub const DEFAULT_LOG_FOLDER: &str = "%USERPROFILE%\\AppData\\LocalLow\\VRChat\\VRChat";
-pub const DEFAULT_PHOTO_FOLDER: &str = "%USERPROFILE%\\Pictures\\VRChat";
+/// Last resort for the photo folder; see [`first_run_photo_folder`].
+const DEFAULT_PHOTO_FOLDER: &str = "%USERPROFILE%\\Pictures\\VRChat";
 
 /// Display theme. Stored as `"auto" | "light" | "dark"`; any other value reads as auto.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
@@ -144,7 +146,6 @@ impl Settings {
         self.log_folders.iter().map(|f| resolve(f)).collect()
     }
 
-    #[allow(dead_code)] // consumed by the photo feature (next phase)
     pub fn resolved_photo_folders(&self) -> Vec<PathBuf> {
         self.photo_folders.iter().map(|f| resolve(f)).collect()
     }
@@ -153,25 +154,12 @@ impl Settings {
         resolve(&self.backup_folder)
     }
 
-    /// Loads the file; creates it with defaults when missing (or falls back to defaults when unreadable).
-    pub fn load_or_create() -> Settings {
-        let path = settings_path();
-        if path.exists() {
-            return std::fs::read_to_string(&path)
-                .ok()
-                .and_then(|t| serde_json::from_str::<Settings>(&t).ok())
-                .unwrap_or_else(|| Settings {
-                    log_folders: vec![DEFAULT_LOG_FOLDER.into()],
-                    ..Settings::default()
-                });
-        }
-        let s = Settings {
-            log_folders: vec![DEFAULT_LOG_FOLDER.into()],
-            photo_folders: vec![DEFAULT_PHOTO_FOLDER.into()],
-            ..Settings::default()
-        };
-        let _ = s.save();
-        s
+    /// Loads the settings file, creating it with first-run defaults when it does not exist.
+    /// The second value is a message for the user when an existing file could not be read.
+    pub fn load_or_create() -> (Settings, Option<String>) {
+        let config = std::fs::read_to_string(resolve(DEFAULT_LOG_FOLDER).join("config.json")).ok();
+        let photo_folder = first_run_photo_folder(config.as_deref(), dirs::picture_dir());
+        load_or_create_at(&settings_path(), photo_folder)
     }
 
     pub fn save(&self) -> Result<(), String> {
@@ -180,12 +168,57 @@ impl Settings {
     }
 }
 
+/// Where VRChat saves photos on this PC: the folder set in VRChat's `config.json`
+/// (`picture_output_folder`), else `VRChat` in the user's Pictures folder (which OneDrive may
+/// have moved), else the classic location.
+fn first_run_photo_folder(vrchat_config: Option<&str>, pictures: Option<PathBuf>) -> String {
+    let configured = vrchat_config
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok())
+        .and_then(|v| v.get("picture_output_folder").and_then(|f| f.as_str()).map(str::trim).map(String::from))
+        .filter(|f| !f.is_empty());
+    configured
+        .or_else(|| pictures.map(|p| p.join("VRChat").display().to_string()))
+        .unwrap_or_else(|| DEFAULT_PHOTO_FOLDER.into())
+}
+
+fn load_or_create_at(path: &Path, first_run_photo_folder: String) -> (Settings, Option<String>) {
+    if !path.exists() {
+        let s = Settings {
+            log_folders: vec![DEFAULT_LOG_FOLDER.into()],
+            photo_folders: vec![first_run_photo_folder],
+            ..Settings::default()
+        };
+        let _ = write_file(path, &s);
+        return (s, None);
+    }
+    let read = std::fs::read_to_string(path)
+        .map_err(|e| e.to_string())
+        .and_then(|t| serde_json::from_str::<Settings>(&t).map_err(|e| e.to_string()));
+    match read {
+        Ok(s) => (s, None),
+        Err(e) => {
+            // Keep what the user had: the next save would otherwise replace it with defaults.
+            let backup = path.with_extension("json.bak");
+            let kept = std::fs::copy(path, &backup).is_ok();
+            let mut msg = format!("設定ファイルを読めなかったため、既定の設定で起動しました。\n{}\n\n原因: {e}", path.display());
+            if kept {
+                msg.push_str(&format!("\n\n元のファイルは次の名前で残してあります。\n{}", backup.display()));
+            }
+            let s = Settings { log_folders: vec![DEFAULT_LOG_FOLDER.into()], ..Settings::default() };
+            (s, Some(msg))
+        }
+    }
+}
+
+/// Writes to a temporary file and renames it over the target, so a crash cannot leave half a file.
 fn write_file(path: &Path, s: &Settings) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let json = serde_json::to_string_pretty(s).map_err(std::io::Error::other)?;
-    std::fs::write(path, json)
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, json)?;
+    std::fs::rename(&tmp, path)
 }
 
 #[cfg(test)]
@@ -210,6 +243,51 @@ mod tests {
         assert_eq!(s.last_backup_at, None);
         assert_eq!(s.update_feed, "");
         assert_eq!(s.theme, ThemeSetting::Auto);
+    }
+
+    #[test]
+    fn first_run_photo_folder_prefers_vrchat_config_then_pictures() {
+        let pics = Some(PathBuf::from("X:\\Pics"));
+        let cfg = r#"{"picture_output_folder":" Y:\\Shots ","camera_res_height":2160}"#;
+        assert_eq!(first_run_photo_folder(Some(cfg), pics.clone()), "Y:\\Shots");
+        for no_folder in [r#"{"picture_output_folder":""}"#, r#"{"other":1}"#, "not json", r#"{"picture_output_folder":3}"#] {
+            assert_eq!(first_run_photo_folder(Some(no_folder), pics.clone()), "X:\\Pics\\VRChat", "{no_folder}");
+        }
+        assert_eq!(first_run_photo_folder(None, pics), "X:\\Pics\\VRChat");
+        assert_eq!(first_run_photo_folder(None, None), DEFAULT_PHOTO_FOLDER);
+    }
+
+    #[test]
+    fn first_run_creates_the_file_with_the_found_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub").join("vrclogger.settings.json");
+        let (s, warning) = load_or_create_at(&path, "P:\\Photos".into());
+        assert_eq!(warning, None);
+        assert_eq!(s.photo_folders, ["P:\\Photos"]);
+        assert_eq!(s.log_folders, [DEFAULT_LOG_FOLDER]);
+        // The second start reads what the first one wrote (and leaves no temporary file).
+        let (again, warning) = load_or_create_at(&path, "ignored".into());
+        assert_eq!(warning, None);
+        assert_eq!(again.photo_folders, ["P:\\Photos"]);
+        assert!(!path.with_extension("json.tmp").exists());
+    }
+
+    #[test]
+    fn unreadable_file_is_kept_as_bak_and_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vrclogger.settings.json");
+        let broken = r#"{"DbPath":"mine.db","DayStartHour":-1}"#;
+        std::fs::write(&path, broken).unwrap();
+        let (s, warning) = load_or_create_at(&path, "P:\\Photos".into());
+        assert_eq!(s.db_path, "vrclog.db");
+        assert!(s.photo_folders.is_empty());
+        let warning = warning.expect("the user must be told");
+        assert!(warning.contains("vrclogger.settings.json.bak"), "{warning}");
+        assert_eq!(std::fs::read_to_string(dir.path().join("vrclogger.settings.json.bak")).unwrap(), broken);
+        // A later save replaces the broken file; the copy stays.
+        write_file(&path, &s).unwrap();
+        assert!(serde_json::from_str::<Settings>(&std::fs::read_to_string(&path).unwrap()).is_ok());
+        assert_eq!(std::fs::read_to_string(dir.path().join("vrclogger.settings.json.bak")).unwrap(), broken);
     }
 
     #[test]

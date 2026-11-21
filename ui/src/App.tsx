@@ -303,8 +303,8 @@ function Main() {
     go("sessions", () => void sessions.current?.selectVisitById(visitId));
   };
 
-  const navigateToPlayer = (_playerId: number, displayName: string) => {
-    go("players", () => players.current?.searchFor(displayName));
+  const navigateToPlayer = (playerId: number, displayName: string) => {
+    go("players", () => players.current?.searchFor(displayName, playerId));
   };
 
   const navigateToPhotos = (filter: PhotoFilter) => {

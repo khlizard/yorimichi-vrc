@@ -67,6 +67,12 @@ fn eligible_photo_gets_the_right_fields() {
     assert_eq!(f.author.as_deref(), Some("Tester"));
     assert_eq!(f.create_date, dt(2026, 1, 10, 20, 30, 0));
     assert_eq!((f.utc_offset_minutes, f.written_at), (OFFSET, now()));
+    assert_eq!(f.create_offset_minutes, OFFSET);
+
+    // With a capture-offset rule, the capture time gets the offset of its own date.
+    let dst = MetadataService::new(&fx.conn).with_capture_offset(|t| if t < dt(2026, 3, 1, 0, 0, 0) { -480 } else { -420 });
+    let (_, f) = dst.classify_write(id_of(&fx, "vrc_2026-01-10_20-31-00.jpg"), -420, now()).unwrap().unwrap();
+    assert_eq!((f.create_offset_minutes, f.utc_offset_minutes), (-480, -420));
 
     let (_, f) = svc.classify_write(id_of(&fx, "vrc_2026-01-10_20-31-00.jpg"), OFFSET, now()).unwrap().unwrap();
     assert_eq!(f.creator_tool.as_deref(), Some("VRChat"));

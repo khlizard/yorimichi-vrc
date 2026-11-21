@@ -38,6 +38,9 @@ pub struct XmpFields {
     pub author_id: Option<String>,
     /// Capture time as local wall-clock time.
     pub create_date: NaiveDateTime,
+    /// UTC offset of `create_date`, in minutes.
+    pub create_offset_minutes: i32,
+    /// UTC offset of `written_at`, in minutes.
     pub utc_offset_minutes: i32,
     pub world_id: String,
     pub world_name: String,
@@ -82,7 +85,7 @@ fn fmt_date(dt: NaiveDateTime, offset_minutes: i32) -> String {
 /// The packet, shaped like the one VRChat writes: one `rdf:Description` per namespace, values as
 /// elements, no `xpacket` wrapper, plus our own provenance block.
 pub fn build_xmp(f: &XmpFields) -> String {
-    let created = fmt_date(f.create_date, f.utc_offset_minutes);
+    let created = fmt_date(f.create_date, f.create_offset_minutes);
     let mut x = String::new();
     x.push_str("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n");
     x.push_str("  <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\">\n");

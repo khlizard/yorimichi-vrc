@@ -236,7 +236,12 @@ pub fn run() {
         ])
         .setup(|tauri_app| {
             let handle = tauri_app.handle().clone();
-            tauri_app.manage(AppState::new(Settings::load_or_create()));
+            let (settings, settings_warning) = Settings::load_or_create();
+            tauri_app.manage(AppState::new(settings));
+            if let Some(msg) = settings_warning {
+                use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+                handle.dialog().message(msg).title("VrcLogger").kind(MessageDialogKind::Warning).show(|_| {});
+            }
 
             if let Err(e) = app::reopen_query_db(&handle) {
                 app::set_status(&handle, format!("データベースを開けません: {e}"));

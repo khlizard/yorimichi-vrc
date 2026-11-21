@@ -20,3 +20,9 @@ vrclog-viewer.html
 *.html.tmp
 
 samples/
+backups/
+
+# 手元だけの設定・メモ
+.env*
+.claude/
+CLAUDE.md

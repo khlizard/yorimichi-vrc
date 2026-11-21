@@ -157,6 +157,8 @@ struct PhotoRef {
 
 pub struct MetadataService<'a> {
     conn: &'a Connection,
+    /// UTC offset (minutes) in force at a local capture time; see [`Self::with_capture_offset`].
+    capture_offset: Option<fn(NaiveDateTime) -> i32>,
 }
 
 fn has_png_or_jpeg_extension(path: &Path) -> bool {
@@ -167,7 +169,15 @@ fn has_png_or_jpeg_extension(path: &Path) -> bool {
 
 impl<'a> MetadataService<'a> {
     pub fn new(conn: &'a Connection) -> Self {
-        Self { conn }
+        Self { conn, capture_offset: None }
+    }
+
+    /// Dates a photo's capture time with the offset that applied when it was taken (daylight
+    /// saving time differs through the year). Without this, the `utc_offset_minutes` passed to
+    /// each call, which is the offset at the time of writing, is used for the capture time too.
+    pub fn with_capture_offset(mut self, offset_at: fn(NaiveDateTime) -> i32) -> Self {
+        self.capture_offset = Some(offset_at);
+        self
     }
 
     /// Photo ids of a target. Ids keeps the given order and drops unknown and repeated ids
@@ -317,6 +327,7 @@ impl<'a> MetadataService<'a> {
                 author,
                 author_id,
                 create_date: taken_at,
+                create_offset_minutes: self.capture_offset.map_or(utc_offset_minutes, |f| f(taken_at)),
                 utc_offset_minutes,
                 world_id,
                 world_name,

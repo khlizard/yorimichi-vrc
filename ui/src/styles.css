@@ -22,6 +22,8 @@
   --link: #0b57b0;
   --ok: #2e7d32;
   --focus: #0a64c8;
+  /* Text on a --focus background. */
+  --on-accent: #ffffff;
   --star: #b7791f;
   /* Photo placeholder: dark in both themes (photos sit on a dark ground). */
   --tile: #22242a;
@@ -29,8 +31,11 @@
   --font: "Yu Gothic UI", "Segoe UI", "Meiryo", sans-serif;
 }
 
-/* Dark theme (data-theme is set by theme.ts); photo screens keep their own palette. */
-:root[data-theme="dark"] {
+/* Dark palette: the dark theme (data-theme is set by theme.ts) and, in both themes, the photo
+   screens (.photo-surface). One list, so a part placed on a photo screen always gets matching
+   foreground and background. */
+:root[data-theme="dark"],
+.photo-surface {
   color-scheme: dark;
   --bg: #16171a;
   --fg: #e8e8ea;
@@ -54,6 +59,7 @@
   --link: #7ab8f5;
   --ok: #66bb6a;
   --focus: #5aa9f5;
+  --on-accent: #0e0f11;
   --star: #e3b341;
 }
 

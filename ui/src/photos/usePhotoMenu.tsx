@@ -22,8 +22,13 @@ import { PhotoInfoDialog } from "./PhotoInfoDialog";
 export interface PhotoMenuOptions {
   /** When given, the menu shows "開く" first. */
   onOpen?: () => void;
-  /** Called after the favorite was changed from the menu. */
+  /**
+   * Called after the favorite was changed from the menu. A caller that passes this keeps
+   * `photo.favorite` current itself; without it the menu remembers its own changes.
+   */
   onFavoriteChanged?: (id: number, favorite: boolean) => void;
+  /** Called just before the menu moves to another screen (a lightbox closes itself here). */
+  beforeNavigate?: () => void;
   /** Location-specific items (e.g. "このアルバムから外す"), shown in the album/favorite group. */
   extra?: MenuItem[];
 }
@@ -85,7 +90,11 @@ export function usePhotoMenu(): {
   const build = (m: MenuState): MenuEntry[] => {
     const { photo, opts, status, detail } = m;
     const id = photo.id;
-    const fav = favOv.get(id) ?? photo.favorite;
+    const fav = opts.onFavoriteChanged ? photo.favorite : (favOv.get(id) ?? photo.favorite);
+    const jumpTo = (f: () => void) => () => {
+      opts.beforeNavigate?.();
+      f();
+    };
     const groups: MenuItem[][] = [];
 
     groups.push([
@@ -99,8 +108,8 @@ export function usePhotoMenu(): {
         onClick: () =>
           run(async () => {
             await setPhotoFavorite(id, !fav);
-            setFavOv((o) => new Map(o).set(id, !fav));
-            opts.onFavoriteChanged?.(id, !fav);
+            if (opts.onFavoriteChanged) opts.onFavoriteChanged(id, !fav);
+            else setFavOv((o) => new Map(o).set(id, !fav));
           }),
       },
       { label: "アルバムに追加…", onClick: () => void addToAlbum([id]) },
@@ -121,12 +130,12 @@ export function usePhotoMenu(): {
     const jump: MenuItem[] = [];
     if (photo.visitId != null) {
       const v = photo.visitId;
-      jump.push({ label: "このセッションを表示", onClick: () => nav.showVisit(v) });
+      jump.push({ label: "このセッションを表示", onClick: jumpTo(() => nav.showVisit(v)) });
     }
-    jump.push({ label: "この日のタイムライン", onClick: () => nav.showDayAt(photo.takenAt) });
+    jump.push({ label: "この日のタイムライン", onClick: jumpTo(() => nav.showDayAt(photo.takenAt)) });
     if (photo.worldRefId != null) {
       const w = photo.worldRefId;
-      jump.push({ label: "ワールドを表示", onClick: () => nav.showWorld(w) });
+      jump.push({ label: "ワールドを表示", onClick: jumpTo(() => nav.showWorld(w)) });
     }
     const wid = detail?.worldId;
     if (wid && wid.startsWith("wrld_")) {

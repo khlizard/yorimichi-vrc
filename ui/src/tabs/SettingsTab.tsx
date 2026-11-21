@@ -187,6 +187,7 @@ export function SettingsTab({ onClose }: { onClose: () => void }) {
           </label>
           <input id="db-path" type="text" value={s.DbPath} onChange={(e) => patch({ DbPath: e.target.value })} />
           <div className="hint">相対パスは設定ファイルのあるフォルダ基準。%VAR% 展開可。</div>
+          {status && <div className="hint">いま使っているファイル: {status.dbPath}</div>}
           <div className="inline">
             <input
               type="number"
