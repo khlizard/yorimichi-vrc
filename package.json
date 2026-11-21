@@ -10,6 +10,7 @@
     "test": "vitest run",
     "lint": "node --require ./eslint-shim.cjs node_modules/eslint/bin/eslint.js ui/src",
     "tauri": "node scripts/with-target.mjs tauri",
+    "third-party": "node scripts/licenses.mjs",
     "test:rust": "node scripts/with-target.mjs cargo test --workspace",
     "lint:rust": "node scripts/with-target.mjs cargo clippy --workspace --all-targets"
   },

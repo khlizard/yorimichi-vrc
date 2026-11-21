@@ -21,7 +21,13 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "img-src": "'self' data: blob: vrcphoto: http://vrcphoto.localhost",
+        "style-src": "'self' 'unsafe-inline'",
+        "connect-src": "'self' ipc: http://ipc.localhost"
+      },
+      "devCsp": null
     }
   },
   "bundle": {

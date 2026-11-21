@@ -71,7 +71,7 @@ DB に触れない自己完結の HTML を保存できます。同期される�
 
 - Windows 10 / 11 (WebView2 ランタイム。Windows 11 は標準搭載)
 - 開発・ビルド: [Rust](https://rustup.rs/) 1.88 以降 (MSVC ツールチェーン)、Node.js、[pnpm](https://pnpm.io/)
-- インストーラー作成: [Velopack](https://velopack.io/) の `vpk` (`dotnet tool install -g vpk`)
+- インストーラー作成: [Velopack](https://velopack.io/) の `vpk` (`dotnet tool install -g vpk`) と、ライセンスの一覧を作る `cargo-about` (`cargo install cargo-about --locked --features cli`)
 
 ## 開発
 
@@ -142,3 +142,5 @@ logs/          # (Git 管理外) 実ログを置くと実ログのテストが�
 ## ライセンス
 
 [MIT License](LICENSE)
+
+配布するインストーラーには、含まれるライブラリのライセンスの一覧 (`THIRD-PARTY-LICENSES.html`) が入ります。`pack.ps1` が作成します。単独で作るときは `pnpm third-party` を実行してください。

@@ -1,0 +1,28 @@
+# cargo-about の設定: 配布する exe に入る Rust の依存ライブラリのライセンス一覧を作る。
+# 使い方は scripts/licenses.mjs を参照 (pack.ps1 から呼ばれる)。
+
+# 配布するのは Windows 版だけなので、ほかの OS 専用の依存は一覧に入れない。
+targets = ["x86_64-pc-windows-msvc"]
+
+# ビルドやテストにだけ使う依存は exe に入らない。
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# 受け入れるライセンス。ここに無いライセンスの依存が増えると一覧の作成が失敗するので、
+# 内容を確かめてから足す。
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "BSL-1.0",
+    "CC0-1.0",
+    "0BSD",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
+]

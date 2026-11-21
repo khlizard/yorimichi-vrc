@@ -1,6 +1,7 @@
 # Yorimichi for VRChat の Velopack パッケージ (Setup.exe と更新用 nupkg) を作成する。
 # 使い方: pwsh scripts/pack.ps1
-# 必要: Rust, Node.js + pnpm, vpk (dotnet tool install -g vpk)
+# 必要: Rust, Node.js + pnpm, vpk (dotnet tool install -g vpk),
+#       cargo-about (cargo install cargo-about --locked --features cli)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -27,6 +28,10 @@ $stage = Join-Path $targetDir 'pack'
 Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item (Join-Path $targetDir 'release\yorimichi.exe') $stage
+
+# 含まれるライブラリのライセンスの一覧を、exe と同じフォルダに入れる
+node scripts/licenses.mjs (Join-Path $stage 'THIRD-PARTY-LICENSES.html')
+if ($LASTEXITCODE -ne 0) { throw "ライセンスの一覧の作成に失敗しました (exit $LASTEXITCODE)" }
 
 vpk pack `
     --packId Yorimichi `
