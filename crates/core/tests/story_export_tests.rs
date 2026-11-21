@@ -1,9 +1,9 @@
 mod common;
 
 use common::*;
-use vrclogger_core::data::LibraryService;
-use vrclogger_core::{Error, LibraryError};
-use vrclogger_core::export::story::{export_album, export_day, StoryOptions};
+use yorimichi_core::data::LibraryService;
+use yorimichi_core::{Error, LibraryError};
+use yorimichi_core::export::story::{export_album, export_day, StoryOptions};
 
 const W1: &str = "wrld_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const EVIL_WORLD: &str = "<script>alert(1)</script> World";
@@ -38,7 +38,7 @@ fn now() -> chrono::NaiveDateTime {
 fn assert_private(html: &str, fx: &Fixture) {
     assert!(!html.contains("usr_"));
     assert!(!html.contains("wrld_"));
-    assert!(!html.contains("vrclogger-test-"));
+    assert!(!html.contains("yorimichi-test-"));
     assert!(!html.contains(fx.dir.path().to_string_lossy().as_ref()));
     assert!(!html.contains("<script>alert"));
     assert!(!html.contains("http://") && !html.contains("https://"));
@@ -61,7 +61,7 @@ fn album_export_embeds_photos_and_counts_skips() {
     assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt; World"));
     assert!(html.contains("2026-11-19 21:15 · "));
     assert!(html.contains("Friend &amp; Co"));
-    assert!(html.contains("VrcLogger で書き出し (2026-11-20 01:02)"));
+    assert!(html.contains("Yorimichi で書き出し (2026-11-20 01:02)"));
     assert!(html.contains("lang=\"ja\""));
     assert!(html.contains("loading=\"lazy\""));
     assert_private(&html, &s.fx);
@@ -111,7 +111,7 @@ fn day_export_has_rail_sections_and_loose_photos() {
     let visit_at = html.find("<h2>").unwrap();
     let loose_at = html.find("<div class=\"when\">23:30</div>").unwrap();
     assert!(visit_at < loose_at);
-    assert!(html.contains("VrcLogger で書き出し (2026-11-20 01:02)"));
+    assert!(html.contains("Yorimichi で書き出し (2026-11-20 01:02)"));
     assert_private(&html, &s.fx);
 
     let opts = StoryOptions { include_players: false, ..StoryOptions::default() };

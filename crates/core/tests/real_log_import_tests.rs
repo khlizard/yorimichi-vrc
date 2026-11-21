@@ -3,7 +3,7 @@
 mod common;
 
 use common::Fixture;
-use vrclogger_core::data::{ImportService, QueryService};
+use yorimichi_core::data::{ImportService, QueryService};
 
 #[test]
 fn imports_all_sample_logs_end_to_end() {

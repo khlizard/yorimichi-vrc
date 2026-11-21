@@ -1,16 +1,16 @@
 //! Tauri commands for writing log-derived metadata into photos (and removing it again).
 //!
 //! Every write goes plan -> user confirmation (UI) -> run. Per-file safety lives in the core
-//! `MetadataService`, the batch loop in `vrclogger_core::data::metadata_run`; this module only
+//! `MetadataService`, the batch loop in `yorimichi_core::data::metadata_run`; this module only
 //! wires them to the app: progress events, the cancel flag and the wording of errors.
 
 use std::sync::atomic::Ordering;
 
 use chrono::{Local, LocalResult, NaiveDateTime, TimeZone};
 use tauri::{AppHandle, Emitter, Manager, State};
-use vrclogger_core::data::metadata::{MetaMode, MetaPlan, MetaStatus, MetaTarget, MetadataService};
-use vrclogger_core::data::metadata_run::{run_plan, MetaProgress, MetaRunSummary, RunHooks, RunOptions, ServiceSteps};
-use vrclogger_core::photos::cloud;
+use yorimichi_core::data::metadata::{MetaMode, MetaPlan, MetaStatus, MetaTarget, MetadataService};
+use yorimichi_core::data::metadata_run::{run_plan, MetaProgress, MetaRunSummary, RunHooks, RunOptions, ServiceSteps};
+use yorimichi_core::photos::cloud;
 
 use crate::app::{self, AppState};
 use crate::commands::CmdResult;

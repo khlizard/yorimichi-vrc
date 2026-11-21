@@ -1,8 +1,8 @@
 mod common;
 
 use common::*;
-use vrclogger_core::data::LibraryService;
-use vrclogger_core::{Error, LibraryError, NameKind};
+use yorimichi_core::data::LibraryService;
+use yorimichi_core::{Error, LibraryError, NameKind};
 
 fn setup() -> (Fixture, [i64; 4]) {
     let fx = Fixture::new();
@@ -168,7 +168,7 @@ fn album_from_visit_that_fails_leaves_no_album() {
     assert_eq!(fx.count("SELECT count(*) FROM albums"), 0);
 
     // A blank name is refused before anything is created.
-    vrclogger_core::photos::relink_visits(&fx.conn).unwrap();
+    yorimichi_core::photos::relink_visits(&fx.conn).unwrap();
     let r = lib.create_album_from_visit(visit, "  ", dt(2026, 7, 1, 8, 0, 0));
     assert!(matches!(r, Err(Error::Library(LibraryError::EmptyName(NameKind::Album)))));
     assert_eq!(fx.count("SELECT count(*) FROM albums"), 0);

@@ -4927,49 +4927,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
-name = "vrclogger"
-version = "0.4.0"
-dependencies = [
- "arboard",
- "chrono",
- "dirs 6.0.0",
- "image",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tempfile",
- "tokio",
- "velopack",
- "vrclogger-core",
- "windows",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "vrclogger-core"
-version = "0.4.0"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "image",
- "jpeg-decoder",
- "regex",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
- "walkdir",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "vswhom"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5720,6 +5677,49 @@ dependencies = [
  "quote",
  "syn 3.0.10",
  "synstructure",
+]
+
+[[package]]
+name = "yorimichi"
+version = "0.4.0"
+dependencies = [
+ "arboard",
+ "chrono",
+ "dirs 6.0.0",
+ "image",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tempfile",
+ "tokio",
+ "velopack",
+ "windows",
+ "windows-sys 0.61.2",
+ "yorimichi-core",
+]
+
+[[package]]
+name = "yorimichi-core"
+version = "0.4.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "image",
+ "jpeg-decoder",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "walkdir",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

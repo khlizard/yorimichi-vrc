@@ -1,6 +1,6 @@
 # 写真のメタデータ
 
-VRChat が写真に入れるメタデータと、VrcLogger がそれをどう読み、どう書き込むかの説明です。
+VRChat が写真に入れるメタデータと、Yorimichi がそれをどう読み、どう書き込むかの説明です。
 
 ## VRChat の PNG
 
@@ -63,7 +63,7 @@ Photoshop などで保存し直すと、XMP の形が変わります。
 - `xmp:ModifyDate` が保存した日時に変わり、`xmp:MetadataDate`・`dc:format`・保存の履歴（`xmpMM:*`）が増える
 - `xmp:CreateDate` と `vrc:*` は残る
 
-## VrcLogger が読むもの
+## Yorimichi が読むもの
 
 写真の読み込み（`crates/core/src/photos/meta.rs`）では、XMP から次の値を読みます。
 
@@ -72,7 +72,7 @@ Photoshop などで保存し直すと、XMP の形が変わります。
 
 XMP が無い写真は、ファイル名の日時、それも無ければ更新日時から撮影日時を決めます。
 
-## VrcLogger が書き込むもの
+## Yorimichi が書き込むもの
 
 「メタデータの書き込み」（`crates/core/src/photos/xmp_write.rs`）は、XMP がまったく無い PNG / JPEG に、ログから分かる値を入れます。
 
@@ -100,9 +100,9 @@ XMP が無い写真は、ファイル名の日時、それも無ければ更新�
       <vrc:WorldDisplayName>（ワールド名）</vrc:WorldDisplayName>
       <vrc:AuthorID>usr_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</vrc:AuthorID>
     </rdf:Description>
-    <rdf:Description xmlns:vrclogger="urn:vrclogger:meta:1.0">
-      <vrclogger:Source>log</vrclogger:Source>
-      <vrclogger:WrittenAt>2026-11-21T12:00:00+09:00</vrclogger:WrittenAt>
+    <rdf:Description xmlns:yorimichi="urn:yorimichi:meta:1.0">
+      <yorimichi:Source>log</yorimichi:Source>
+      <yorimichi:WrittenAt>2026-11-21T12:00:00+09:00</yorimichi:WrittenAt>
     </rdf:Description>
   </rdf:RDF>
 </x:xmpmeta>
@@ -114,11 +114,12 @@ XMP が無い写真は、ファイル名の日時、それも無ければ更新�
 | `xmp:Author` / `vrc:AuthorID` | ログで分かる自分の表示名とユーザー ID。分からなければ書かない |
 | 撮影日時の 3 項目 | ファイル名の日時（秒まで）。時差は、その日時に PC のタイムゾーンで有効だった値 |
 | `vrc:WorldID` / `vrc:WorldDisplayName` | 撮影時刻にいたワールド（ログから） |
-| `vrclogger:Source` | このアプリが書いた目印。常に `log` |
-| `vrclogger:WrittenAt` | 書き込んだ日時 |
+| `yorimichi:Source` | このアプリが書いた目印。常に `log` |
+| `yorimichi:WrittenAt` | 書き込んだ日時 |
 
 その場にいた人は書き込みません。
 
 ### 取り除き
 
-「書き込んだものを取り除く」は、`vrclogger:Source` の目印がある XMP だけを取り除きます。取り除いたあとのファイルは、書き込む前と完全に同じになります。VRChat やほかのソフトが書いた XMP には触れません。
+「書き込んだものを取り除く」は、`yorimichi:Source` の目印がある XMP だけを取り除きます。取り除いたあとのファイルは、書き込む前と完全に同じになります。VRChat やほかのソフトが書いた XMP には触れません。
+0.3 までの版が書いた古い目印 (`vrclogger:Source`) も、このアプリが書いたものとして扱います。

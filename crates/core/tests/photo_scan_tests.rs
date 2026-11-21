@@ -3,9 +3,9 @@ mod common;
 use std::path::{Path, PathBuf};
 
 use common::{d, log, Fixture};
-use vrclogger_core::data::photo_query::{PhotoFilter, PhotoService};
-use vrclogger_core::data::ImportService;
-use vrclogger_core::photos::{relink_visits, scan_folders};
+use yorimichi_core::data::photo_query::{PhotoFilter, PhotoService};
+use yorimichi_core::data::ImportService;
+use yorimichi_core::photos::{relink_visits, scan_folders};
 
 const FRIEND: &str = "usr_11111111-1111-1111-1111-111111111111";
 const WORLD: &str = "wrld_11111111-1111-1111-1111-111111111111";
@@ -37,7 +37,7 @@ fn visit_log(day: &str, instance: u32) -> String {
     ))
 }
 
-fn scan(fx: &Fixture, folders: &[&Path]) -> vrclogger_core::photos::ScanSummary {
+fn scan(fx: &Fixture, folders: &[&Path]) -> yorimichi_core::photos::ScanSummary {
     let v: Vec<PathBuf> = folders.iter().map(|p| p.to_path_buf()).collect();
     scan_folders(&fx.conn, &v, None).unwrap()
 }
@@ -204,7 +204,7 @@ fn setup_visit_photos(fx: &Fixture) -> PathBuf {
     root
 }
 
-fn names(rows: &[vrclogger_core::data::photo_query::PhotoRow]) -> Vec<String> {
+fn names(rows: &[yorimichi_core::data::photo_query::PhotoRow]) -> Vec<String> {
     rows.iter().map(|r| r.file_name.rsplit('_').next().unwrap().trim_end_matches(".png").to_string()).collect()
 }
 
@@ -233,7 +233,7 @@ fn paging_has_no_gaps_or_duplicates() {
         before = Some((last.taken_at.clone(), last.id));
         paged.extend(page);
     }
-    let ids = |v: &[vrclogger_core::data::photo_query::PhotoRow]| v.iter().map(|r| r.id).collect::<Vec<_>>();
+    let ids = |v: &[yorimichi_core::data::photo_query::PhotoRow]| v.iter().map(|r| r.id).collect::<Vec<_>>();
     assert_eq!(ids(&paged), ids(&all));
     assert!(all.windows(2).all(|w| (&w[0].taken_at, w[0].id) > (&w[1].taken_at, w[1].id)));
 }

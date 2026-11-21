@@ -3,7 +3,7 @@ mod common;
 use std::io::Cursor;
 
 use common::dt;
-use vrclogger_core::photos::{parse_xmp, read_meta, read_png_info, time_from_name, TimeSource};
+use yorimichi_core::photos::{parse_xmp, read_meta, read_png_info, time_from_name, TimeSource};
 
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;

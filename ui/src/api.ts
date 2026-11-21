@@ -14,7 +14,7 @@ export const ALL = "(全て)";
 /** Page size the UI should use for the photo grid (photos). */
 export const PHOTO_PAGE_SIZE = 200;
 
-// ---- DTOs (camelCase, mirrors vrclogger-core data/dtos.rs) ----
+// ---- DTOs (camelCase, mirrors yorimichi-core data/dtos.rs) ----
 
 export interface PlayerHit {
   id: number;
@@ -166,7 +166,7 @@ export interface PhotosChanged {
   relinked: number;
 }
 
-// ---- Settings (PascalCase keys, as stored in %APPDATA%\VrcLogger\vrclogger.settings.json) ----
+// ---- Settings (PascalCase keys, as stored in %APPDATA%\Yorimichi\yorimichi.settings.json) ----
 
 export interface Settings {
   DbPath: string;

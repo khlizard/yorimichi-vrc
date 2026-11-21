@@ -16,6 +16,11 @@ pub(crate) const XMP_KEYWORD: &str = "XML:com.adobe.xmp";
 /// APP1 prefix of a JPEG XMP packet, and of the ExtendedXMP continuation.
 pub(crate) const JPEG_XMP_SIG: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
 pub(crate) const JPEG_XMP_EXT_SIG: &[u8] = b"http://ns.adobe.com/xmp/extension/\0";
+/// Marker element of the provenance block this tool writes into photos.
+pub(crate) const SOURCE_TAG: &str = "<yorimichi:Source>";
+/// Marker written by versions up to 0.3 (before the rename to Yorimichi); still recognised so that
+/// packets those versions wrote are treated as ours and can be removed.
+pub(crate) const LEGACY_SOURCE_TAG: &str = "<vrclogger:Source>";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeSource {
@@ -84,7 +89,7 @@ pub struct XmpInfo {
     pub world_name: Option<String>,
     pub author_id: Option<String>,
     pub author: Option<String>,
-    /// A `vrclogger:Source` element is present, i.e. this tool wrote the packet.
+    /// A `yorimichi:Source` (or legacy `vrclogger:Source`) element is present, i.e. this tool wrote the packet.
     pub ours: bool,
 }
 
@@ -144,7 +149,7 @@ pub fn parse_xmp(xml: &str) -> XmpInfo {
         world_name: element_text(xml, "WorldDisplayName"),
         author_id: element_text(xml, "AuthorID"),
         author: element_text(xml, "Author"),
-        ours: xml.contains("<vrclogger:Source>"),
+        ours: xml.contains(SOURCE_TAG) || xml.contains(LEGACY_SOURCE_TAG),
     }
 }
 

@@ -133,7 +133,7 @@ pub async fn save_settings(
 
 #[tauri::command]
 pub async fn default_noise_patterns() -> CmdResult<Vec<String>> {
-    Ok(vrclogger_core::parsing::noise::default_patterns())
+    Ok(yorimichi_core::parsing::noise::default_patterns())
 }
 
 #[tauri::command]

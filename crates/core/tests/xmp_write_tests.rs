@@ -7,8 +7,8 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use common::dt;
-use vrclogger_core::{Error, PhotoError};
-use vrclogger_core::photos::{
+use yorimichi_core::{Error, PhotoError};
+use yorimichi_core::photos::{
     build_xmp, insert_xmp, parse_xmp, read_jpeg_xmp, remove_our_xmp_from_file, strip_our_xmp, write_xmp_to_file,
     xmp_presence, XmpFields, XmpPresence,
 };
@@ -111,7 +111,7 @@ fn build_xmp_round_trips_and_escapes() {
     f.create_offset_minutes = -(5 * 60 + 30);
     let x = build_xmp(&f);
     assert!(x.contains("<xmp:CreateDate>2026-11-19T23:09:58-05:30</xmp:CreateDate>"));
-    assert!(x.contains("<vrclogger:WrittenAt>2026-11-21T12:00:00+09:00</vrclogger:WrittenAt>"));
+    assert!(x.contains("<yorimichi:WrittenAt>2026-11-21T12:00:00+09:00</yorimichi:WrittenAt>"));
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn presence_detection_and_refusal() {
             assert_eq!(fs::read(&p).unwrap(), bytes, "{name} must be untouched");
         }
     }
-    assert!(!d.join(".none.png.vrclogger-tmp").exists());
+    assert!(!d.join(".none.png.yorimichi-tmp").exists());
 }
 
 #[test]
@@ -203,7 +203,7 @@ fn write_preserves_mtime_and_leaves_no_temp_file() {
         let leftovers = fs::read_dir(dir.path())
             .unwrap()
             .flatten()
-            .filter(|e| e.file_name().to_string_lossy().contains("vrclogger-tmp"))
+            .filter(|e| e.file_name().to_string_lossy().contains("yorimichi-tmp"))
             .count();
         assert_eq!(leftovers, 0);
 
@@ -257,6 +257,36 @@ fn strip_never_removes_foreign_xmp() {
 }
 
 #[test]
+fn build_xmp_uses_the_yorimichi_marker() {
+    let x = build_xmp(&fields());
+    assert!(x.contains("<rdf:Description xmlns:yorimichi=\"urn:yorimichi:meta:1.0\">"));
+    assert!(x.contains("<yorimichi:Source>log</yorimichi:Source>"));
+    assert!(!x.contains("vrclogger"));
+}
+
+/// The packet shape written by versions up to 0.3, before the rename (legacy marker).
+fn legacy_xmp() -> String {
+    format!(
+        "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n  <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\">\n    <rdf:Description>\n      <xmp:CreateDate>2026-11-19T23:09:58+09:00</xmp:CreateDate>\n    </rdf:Description>\n    <rdf:Description xmlns:vrc=\"http://ns.vrchat.com/vrc/1.0/\">\n      <vrc:WorldID>{WRLD}</vrc:WorldID>\n      <vrc:WorldDisplayName>Sample World</vrc:WorldDisplayName>\n    </rdf:Description>\n    <rdf:Description xmlns:vrclogger=\"urn:vrclogger:meta:1.0\">\n      <vrclogger:Source>log</vrclogger:Source>\n      <vrclogger:WrittenAt>2026-11-21T12:00:00+09:00</vrclogger:WrittenAt>\n    </rdf:Description>\n  </rdf:RDF>\n</x:xmpmeta>"
+    )
+}
+
+#[test]
+fn legacy_marker_is_ours_and_strippable() {
+    let xmp = legacy_xmp();
+    assert!(parse_xmp(&xmp).ours);
+    let dir = tempfile::tempdir().unwrap();
+    for (name, orig) in [("legacy.png", png_bytes(20, 10)), ("legacy.jpg", jpeg_bytes(20, 10))] {
+        let new = insert_xmp(&orig, &xmp).unwrap();
+        assert_eq!(strip_our_xmp(&new).unwrap().unwrap(), orig, "{name}");
+        let p = write(dir.path(), name, &new);
+        assert_eq!(xmp_presence(&p).unwrap(), XmpPresence::Ours, "{name}");
+        assert!(remove_our_xmp_from_file(&p).unwrap(), "{name}");
+        assert_eq!(fs::read(&p).unwrap(), orig, "{name}");
+    }
+}
+
+#[test]
 fn unsupported_or_broken_input_is_an_error_and_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let mut webp = b"RIFF".to_vec();
@@ -301,7 +331,7 @@ fn oversized_jpeg_payload_is_rejected() {
 #[test]
 #[ignore]
 fn probe_real_copies() {
-    use vrclogger_core::photos::{remove_our_xmp_from_file, write_xmp_to_file, xmp_presence, XmpFields, XmpPresence};
+    use yorimichi_core::photos::{remove_our_xmp_from_file, write_xmp_to_file, xmp_presence, XmpFields, XmpPresence};
     let dir = std::env::var("PROBE_DIR").unwrap();
     let ts = chrono::NaiveDate::from_ymd_opt(2026, 1, 10).unwrap().and_hms_opt(20, 30, 0).unwrap();
     for entry in std::fs::read_dir(dir).unwrap() {

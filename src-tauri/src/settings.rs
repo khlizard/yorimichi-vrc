@@ -1,4 +1,4 @@
-//! Settings file: `%APPDATA%\VrcLogger\vrclogger.settings.json` (PascalCase keys).
+//! Settings file: `%APPDATA%\Yorimichi\yorimichi.settings.json` (PascalCase keys).
 
 use std::path::{Path, PathBuf};
 
@@ -60,12 +60,12 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            db_path: "vrclog.db".into(),
+            db_path: "yorimichi.db".into(),
             log_folders: Vec::new(),
             auto_import_interval_minutes: 1,
             minimize_to_tray: false,
             raw_log_retention_days: 30,
-            raw_log_noise_patterns: vrclogger_core::parsing::noise::default_patterns(),
+            raw_log_noise_patterns: yorimichi_core::parsing::noise::default_patterns(),
             last_viewer_export_folder: None,
             tray_choice_made: false,
             photo_folders: Vec::new(),
@@ -84,17 +84,17 @@ impl Default for Settings {
     }
 }
 
-/// `%APPDATA%\VrcLogger` (also the base for relative paths).
+/// `%APPDATA%\Yorimichi` (also the base for relative paths).
 pub fn settings_dir() -> PathBuf {
     let base = std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .or_else(dirs::config_dir)
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("VrcLogger")
+    base.join("Yorimichi")
 }
 
 pub fn settings_path() -> PathBuf {
-    settings_dir().join("vrclogger.settings.json")
+    settings_dir().join("yorimichi.settings.json")
 }
 
 /// Expands `%NAME%` using environment variables; unknown names are left as written.
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn first_run_creates_the_file_with_the_found_folders() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("sub").join("vrclogger.settings.json");
+        let path = dir.path().join("sub").join("yorimichi.settings.json");
         let (s, warning) = load_or_create_at(&path, "P:\\Photos".into());
         assert_eq!(warning, None);
         assert_eq!(s.photo_folders, ["P:\\Photos"]);
@@ -275,19 +275,19 @@ mod tests {
     #[test]
     fn unreadable_file_is_kept_as_bak_and_reported() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("vrclogger.settings.json");
+        let path = dir.path().join("yorimichi.settings.json");
         let broken = r#"{"DbPath":"mine.db","DayStartHour":-1}"#;
         std::fs::write(&path, broken).unwrap();
         let (s, warning) = load_or_create_at(&path, "P:\\Photos".into());
-        assert_eq!(s.db_path, "vrclog.db");
+        assert_eq!(s.db_path, "yorimichi.db");
         assert!(s.photo_folders.is_empty());
         let warning = warning.expect("the user must be told");
-        assert!(warning.contains("vrclogger.settings.json.bak"), "{warning}");
-        assert_eq!(std::fs::read_to_string(dir.path().join("vrclogger.settings.json.bak")).unwrap(), broken);
+        assert!(warning.contains("yorimichi.settings.json.bak"), "{warning}");
+        assert_eq!(std::fs::read_to_string(dir.path().join("yorimichi.settings.json.bak")).unwrap(), broken);
         // A later save replaces the broken file; the copy stays.
         write_file(&path, &s).unwrap();
         assert!(serde_json::from_str::<Settings>(&std::fs::read_to_string(&path).unwrap()).is_ok());
-        assert_eq!(std::fs::read_to_string(dir.path().join("vrclogger.settings.json.bak")).unwrap(), broken);
+        assert_eq!(std::fs::read_to_string(dir.path().join("yorimichi.settings.json.bak")).unwrap(), broken);
     }
 
     #[test]

@@ -1,8 +1,8 @@
 mod common;
 
 use common::*;
-use vrclogger_core::data::library_dtos::{WorldRow, WorldSort};
-use vrclogger_core::data::{LibraryService, QueryService};
+use yorimichi_core::data::library_dtos::{WorldRow, WorldSort};
+use yorimichi_core::data::{LibraryService, QueryService};
 
 const W1: &str = "wrld_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const W2: &str = "wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";

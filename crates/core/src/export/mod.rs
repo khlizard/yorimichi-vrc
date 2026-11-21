@@ -11,7 +11,7 @@ use crate::data::db;
 use crate::{Error, Result};
 
 /// Marker in `viewer.html` that is replaced by the JSON data. Must appear exactly once.
-pub const PLACEHOLDER: &str = "/*__VRCLOG_DATA__*/null";
+pub const PLACEHOLDER: &str = "/*__YORIMICHI_DATA__*/null";
 
 pub mod story;
 

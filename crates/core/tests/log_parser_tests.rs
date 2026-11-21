@@ -1,7 +1,7 @@
 mod common;
 
 use common::{dt, log};
-use vrclogger_core::parsing::{parse, ParseOptions, ParseResult};
+use yorimichi_core::parsing::{parse, ParseOptions, ParseResult};
 
 fn parse_log(text: &str) -> ParseResult {
     parse(text, &ParseOptions::default())

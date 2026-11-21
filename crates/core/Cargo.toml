@@ -1,6 +1,6 @@
 [package]
-name = "vrclogger-core"
-description = "VRChat log parser, SQLite importer, query layer and HTML viewer exporter"
+name = "yorimichi-core"
+description = "Yorimichi for VRChat core: VRChat log parser, SQLite importer, query layer and HTML viewer exporter"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [lib]
-name = "vrclogger_core"
+name = "yorimichi_core"
 
 [dependencies]
 base64 = "0.22"

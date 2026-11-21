@@ -23,7 +23,7 @@ use super::scan::is_online_only;
 use crate::{Error, PhotoError, Result};
 
 /// Namespace of our provenance block.
-const OUR_NS: &str = "urn:vrclogger:meta:1.0";
+const OUR_NS: &str = "urn:yorimichi:meta:1.0";
 /// Largest APP1 payload (the 2-byte length field counts itself).
 const MAX_JPEG_PAYLOAD: usize = 65_533;
 /// Text chunks bigger than this are not read into memory when looking for XMP.
@@ -51,7 +51,7 @@ pub struct XmpFields {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum XmpPresence {
     None,
-    /// Written by this tool (carries the `vrclogger:Source` marker).
+    /// Written by this tool (carries the `yorimichi:Source` marker, or the legacy `vrclogger:Source`).
     Ours,
     /// Any other XMP, including compressed or extended packets we cannot read.
     Other,
@@ -109,10 +109,10 @@ pub fn build_xmp(f: &XmpFields) -> String {
         x.push_str(&format!("      <vrc:AuthorID>{}</vrc:AuthorID>\n", escape(a)));
     }
     x.push_str("    </rdf:Description>\n");
-    x.push_str(&format!("    <rdf:Description xmlns:vrclogger=\"{OUR_NS}\">\n"));
-    x.push_str("      <vrclogger:Source>log</vrclogger:Source>\n");
+    x.push_str(&format!("    <rdf:Description xmlns:yorimichi=\"{OUR_NS}\">\n"));
+    x.push_str("      <yorimichi:Source>log</yorimichi:Source>\n");
     x.push_str(&format!(
-        "      <vrclogger:WrittenAt>{}</vrclogger:WrittenAt>\n",
+        "      <yorimichi:WrittenAt>{}</yorimichi:WrittenAt>\n",
         fmt_date(f.written_at, f.utc_offset_minutes)
     ));
     x.push_str("    </rdf:Description>\n");
@@ -331,7 +331,8 @@ fn is_ours(text: &str) -> bool {
     parse_xmp(text).ours
 }
 
-/// Removes the chunk / segment(s) holding XMP with our `vrclogger:Source` marker.
+/// Removes the chunk / segment(s) holding XMP with our `yorimichi:Source` marker (or the legacy
+/// `vrclogger:Source` one).
 /// `Ok(None)` if there is none; foreign XMP is never removed.
 pub fn strip_our_xmp(data: &[u8]) -> Result<Option<Vec<u8>>> {
     let mut ranges: Vec<Range<usize>> = Vec::new();
@@ -510,7 +511,7 @@ fn verify_inserted(orig: &[u8], new: &[u8], f: &XmpFields) -> Result<()> {
 /// restores the timestamps `before` had. On any failure before the rename the original is untouched.
 fn replace_file(path: &Path, before: &fs::Metadata, new: &[u8]) -> Result<()> {
     let name = path.file_name().ok_or_else(|| invalid(PhotoError::NoFileName))?;
-    let tmp = path.with_file_name(format!(".{}.vrclogger-tmp", name.to_string_lossy()));
+    let tmp = path.with_file_name(format!(".{}.yorimichi-tmp", name.to_string_lossy()));
 
     let staged = (|| -> Result<()> {
         let _ = fs::remove_file(&tmp); // leftover of an interrupted run

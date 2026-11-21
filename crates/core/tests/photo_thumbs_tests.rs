@@ -1,4 +1,4 @@
-use vrclogger_core::photos::{jpeg_bytes, make_thumbnail};
+use yorimichi_core::photos::{jpeg_bytes, make_thumbnail};
 
 fn write_png(path: &std::path::Path, w: u32, h: u32) {
     image::RgbaImage::from_pixel(w, h, image::Rgba([200, 30, 30, 255])).save(path).unwrap();

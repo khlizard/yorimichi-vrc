@@ -8,15 +8,15 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use common::{dt, import_visits, Fixture, V};
-use vrclogger_core::data::metadata::{
+use yorimichi_core::data::metadata::{
     DownloadOutcome, FileRow, MetaMode, MetaOutcome, MetaPlan, MetaTarget, MetadataService, SkipReason,
 };
-use vrclogger_core::data::metadata_run::{
+use yorimichi_core::data::metadata_run::{
     run_plan, MetaProgress, RunHooks, RunOptions, RunSteps, ServiceSteps, DISK_RESERVE, MAX_FAILURES,
 };
-use vrclogger_core::data::PhotoService;
-use vrclogger_core::photos::{scan_folders, xmp_presence, XmpPresence};
-use vrclogger_core::{PhotoError, Result};
+use yorimichi_core::data::PhotoService;
+use yorimichi_core::photos::{scan_folders, xmp_presence, XmpPresence};
+use yorimichi_core::{PhotoError, Result};
 use xmp_helpers::*;
 
 /// Steps with scripted outcomes; remembers which ids were processed.
@@ -76,7 +76,7 @@ fn opts(allow_download: bool) -> RunOptions {
 }
 
 struct Run {
-    summary: vrclogger_core::data::metadata_run::MetaRunSummary,
+    summary: yorimichi_core::data::metadata_run::MetaRunSummary,
     progress: Vec<MetaProgress>,
 }
 

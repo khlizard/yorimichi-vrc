@@ -282,7 +282,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             }}
           >
             <div className="modal-title" id="modal-title">
-              VrcLogger
+              Yorimichi
             </div>
             <div className="modal-body" id="modal-body">
               {current}

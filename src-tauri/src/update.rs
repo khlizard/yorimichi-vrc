@@ -14,7 +14,7 @@ use crate::app::{self, AppState};
 const FIRST_CHECK_DELAY: Duration = Duration::from_secs(30);
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 3600);
 /// Assets of the newest GitHub release: `releases.win.json` and the full package it lists.
-pub const DEFAULT_FEED: &str = "https://github.com/khlizard/vrc_logger/releases/latest/download";
+pub const DEFAULT_FEED: &str = "https://github.com/khlizard/yorimichi-vrc/releases/latest/download";
 
 /// The feed to use: the one from the settings, or the default when that is blank.
 fn effective_feed(setting: &str) -> String {

@@ -8,15 +8,20 @@ src-tauri/gen/
 vrclog.db
 vrclog.db-wal
 vrclog.db-shm
+yorimichi.db
+yorimichi.db-wal
+yorimichi.db-shm
 
 # VRChat 実ログ（ユーザーIDなどを含む）
 logs/
 
 # ローカル設定
 vrclogger.settings.json
+yorimichi.settings.json
 
 # 別PC閲覧用 HTML（他プレイヤーの名前・ID を含む）
 vrclog-viewer.html
+yorimichi-viewer.html
 *.html.tmp
 
 samples/

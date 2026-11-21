@@ -5,7 +5,7 @@ import { SettingsTab } from "./SettingsTab";
 
 export default function SettingsWindow() {
   useEffect(() => {
-    document.title = "設定 — VrcLogger";
+    document.title = "設定 — Yorimichi";
   }, []);
   return (
     <DialogProvider>

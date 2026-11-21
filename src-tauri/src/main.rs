@@ -2,5 +2,5 @@
 
 fn main() {
     velopack::VelopackApp::build().run();
-    vrclogger_lib::run()
+    yorimichi_lib::run()
 }

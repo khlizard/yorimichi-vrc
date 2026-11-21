@@ -1,8 +1,8 @@
 mod common;
 
 use common::{d, dt, log, Fixture, P};
-use vrclogger_core::data::{ImportService, QueryService};
-use vrclogger_core::parsing::{noise, ParseOptions};
+use yorimichi_core::data::{ImportService, QueryService};
+use yorimichi_core::parsing::{noise, ParseOptions};
 
 fn sample_log(with_second_player: bool) -> String {
     let mut s = log(r"

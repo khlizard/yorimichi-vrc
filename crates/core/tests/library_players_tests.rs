@@ -1,8 +1,8 @@
 mod common;
 
 use common::*;
-use vrclogger_core::data::{ImportService, LibraryService};
-use vrclogger_core::{Error, LibraryError, NameKind};
+use yorimichi_core::data::{ImportService, LibraryService};
+use yorimichi_core::{Error, LibraryError, NameKind};
 
 const W1: &str = "wrld_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const W2: &str = "wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -139,7 +139,7 @@ fn user_data_survives_reimport() {
     assert_eq!((w.memo.as_str(), w.favorite), ("nice place", true));
     assert_eq!(lib.album_photos(album.id).unwrap().len(), 1);
     // the photo link is re-derived from taken_at
-    vrclogger_core::photos::relink_visits(&fx.conn).unwrap();
+    yorimichi_core::photos::relink_visits(&fx.conn).unwrap();
     assert_eq!(lib.player_profile(a).unwrap().unwrap().photo_count, 1);
 }
 

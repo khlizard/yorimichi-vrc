@@ -12,10 +12,10 @@ use serde::Serialize;
 use tauri::menu::CheckMenuItem;
 use tauri::{AppHandle, Emitter, Manager, Theme, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
-use vrclogger_core::data::db;
-use vrclogger_core::data::import::ImportService;
-use vrclogger_core::export;
-use vrclogger_core::parsing::ParseOptions;
+use yorimichi_core::data::db;
+use yorimichi_core::data::import::ImportService;
+use yorimichi_core::export;
+use yorimichi_core::parsing::ParseOptions;
 
 use crate::errors::user_message;
 use crate::maintenance::should_vacuum;
@@ -99,7 +99,7 @@ const NO_DB: &str = "データベースを開けません。設定の DB パス�
 /// Locks the query connection and runs `f` on it; the error text is the user-facing one.
 pub fn with_query_conn<T>(
     state: &AppState,
-    f: impl FnOnce(&Connection) -> vrclogger_core::Result<T>,
+    f: impl FnOnce(&Connection) -> yorimichi_core::Result<T>,
 ) -> Result<T, String> {
     let guard = state.query.lock().unwrap();
     let conn = guard.as_ref().ok_or_else(|| NO_DB.to_string())?;
@@ -110,7 +110,7 @@ pub fn with_query_conn<T>(
 /// menu's metadata status), so those never wait behind a long query on the main connection.
 pub fn with_photo_conn<T>(
     state: &AppState,
-    f: impl FnOnce(&Connection) -> vrclogger_core::Result<T>,
+    f: impl FnOnce(&Connection) -> yorimichi_core::Result<T>,
 ) -> Result<T, String> {
     let guard = state.photo_query.lock().unwrap();
     let conn = guard.as_ref().ok_or_else(|| NO_DB.to_string())?;
@@ -124,7 +124,7 @@ pub fn flatten_join<T>(r: tauri::Result<Result<T, String>>) -> Result<T, String>
 }
 
 /// Opens (creating the parent directory and schema if needed) a database connection.
-pub fn open_db(path: &Path) -> vrclogger_core::Result<Connection> {
+pub fn open_db(path: &Path) -> yorimichi_core::Result<Connection> {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -196,7 +196,7 @@ pub fn status_dto(app: &AppHandle) -> StatusDto {
 /// in screenshots. The settings window shows which database file is in use.
 pub fn update_title(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.set_title("VrcLogger");
+        let _ = w.set_title("Yorimichi");
     }
 }
 
@@ -277,7 +277,7 @@ pub fn open_settings(app: &AppHandle) {
     }
     let theme = native_theme(app.state::<AppState>().settings.lock().unwrap().theme);
     let built = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?window=settings".into()))
-        .title("設定 — VrcLogger")
+        .title("設定 — Yorimichi")
         .theme(theme)
         .inner_size(760.0, 780.0)
         .min_inner_size(560.0, 480.0)
@@ -450,7 +450,7 @@ pub async fn pick_html_save_path(app: &AppHandle, title: &'static str, file_name
 
 pub async fn export_viewer(app: AppHandle) {
     let db_path = app.state::<AppState>().settings.lock().unwrap().resolved_db_path();
-    let Some(path) = pick_html_save_path(&app, "閲覧用 HTML を書き出す", "vrclog-viewer.html".to_string()).await else {
+    let Some(path) = pick_html_save_path(&app, "閲覧用 HTML を書き出す", "yorimichi-viewer.html".to_string()).await else {
         return;
     };
     let out = path.clone();

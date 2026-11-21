@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use chrono::{NaiveDate, NaiveDateTime};
 use rusqlite::Connection;
 use tempfile::TempDir;
-use vrclogger_core::data::db;
+use yorimichi_core::data::db;
 
 /// Log line prefix after the timestamp (`Debug      -  `).
 pub const P: &str = "Debug      -  ";
@@ -45,7 +45,7 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn new() -> Self {
-        let dir = tempfile::Builder::new().prefix("vrclogger-test-").tempdir().unwrap();
+        let dir = tempfile::Builder::new().prefix("yorimichi-test-").tempdir().unwrap();
         let conn = db::open(dir.path().join("test.db")).unwrap();
         db::ensure_created(&conn).unwrap();
         Fixture { conn, dir }
@@ -141,7 +141,7 @@ impl<'a> V<'a> {
 pub fn import_visits(fx: &Fixture, visits: &[V]) {
     for (i, v) in visits.iter().enumerate() {
         let path = fx.write_log(&format!("output_log_2026-01-01_00-00-{i:02}.txt"), &v.text());
-        vrclogger_core::data::ImportService::new(&fx.conn).import_file(&path, None).unwrap();
+        yorimichi_core::data::ImportService::new(&fx.conn).import_file(&path, None).unwrap();
     }
 }
 
@@ -164,7 +164,7 @@ pub fn add_photo(fx: &Fixture, name: &str, taken_at: &str) -> i64 {
         )
         .unwrap();
     let id = fx.conn.last_insert_rowid();
-    vrclogger_core::photos::relink_visits(&fx.conn).unwrap();
+    yorimichi_core::photos::relink_visits(&fx.conn).unwrap();
     id
 }
 

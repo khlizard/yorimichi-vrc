@@ -1,8 +1,8 @@
 mod common;
 
 use common::{d, log, Fixture};
-use vrclogger_core::data::dtos::RawEventHit;
-use vrclogger_core::data::{ImportService, QueryService};
+use yorimichi_core::data::dtos::RawEventHit;
+use yorimichi_core::data::{ImportService, QueryService};
 
 // A: 3 visits, B: visits 1-2, C: visit 3 (after A). Local user is in every visit.
 fn sample() -> Fixture {

@@ -88,7 +88,7 @@ pub(crate) fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&open, &import, &export, &settings, &sep, &exit])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("VrcLogger")
+        .tooltip("Yorimichi")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {

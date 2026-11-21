@@ -6,7 +6,7 @@ mod common;
 
 use std::collections::BTreeSet;
 
-use vrclogger_core::parsing::{parse_file, ParseOptions};
+use yorimichi_core::parsing::{parse_file, ParseOptions};
 
 #[test]
 fn parses_all_sample_logs() {

@@ -2,8 +2,8 @@
 //! notifications, moderation). JS argument names are camelCase.
 
 use tauri::State;
-use vrclogger_core::data::dtos::*;
-use vrclogger_core::data::query::QueryService;
+use yorimichi_core::data::dtos::*;
+use yorimichi_core::data::query::QueryService;
 
 use crate::app::{self, AppState};
 use crate::commands::{keyset, parse_date, CmdResult};
@@ -17,7 +17,7 @@ fn filter_opt(s: Option<String>) -> Option<String> {
 
 fn with_query<T>(
     state: &AppState,
-    f: impl FnOnce(&QueryService) -> vrclogger_core::Result<T>,
+    f: impl FnOnce(&QueryService) -> yorimichi_core::Result<T>,
 ) -> CmdResult<T> {
     app::with_query_conn(state, |conn| f(&QueryService::new(conn)))
 }

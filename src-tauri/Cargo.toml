@@ -1,6 +1,6 @@
 [package]
-name = "vrclogger"
-description = "VRChat log viewer"
+name = "yorimichi"
+description = "Yorimichi for VRChat: look back on your VRChat logs and photos"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -8,18 +8,18 @@ repository.workspace = true
 rust-version.workspace = true
 
 [lib]
-name = "vrclogger_lib"
+name = "yorimichi_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "vrclogger"
+name = "yorimichi"
 path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-vrclogger-core = { path = "../crates/core" }
+yorimichi-core = { path = "../crates/core" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VrcLogger ビューア</title>
+<title>Yorimichi for VRChat ビューア</title>
 <style>
 :root {
   --bg: #f5f6f8; --panel: #ffffff; --text: #1d2129; --muted: #6b7280;
@@ -95,7 +95,7 @@ label.chk { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px
 <body>
 <header>
   <div class="hrow">
-    <h1>VrcLogger ビューア</h1>
+    <h1>Yorimichi for VRChat ビューア</h1>
     <span class="muted small" id="h-gen"></span>
     <span class="muted small" id="h-range"></span>
     <span class="muted small" id="h-counts"></span>
@@ -109,12 +109,12 @@ label.chk { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px
   </div>
 </header>
 <main id="main"></main>
-<script>window.VRCLOG_DATA = /*__VRCLOG_DATA__*/null;</script>
+<script>window.YORIMICHI_DATA = /*__YORIMICHI_DATA__*/null;</script>
 <script>
 (function () {
 'use strict';
 var PAGE = 500;
-var D = window.VRCLOG_DATA;
+var D = window.YORIMICHI_DATA;
 
 function h(tag, cls, text) {
   var e = document.createElement(tag);
@@ -127,7 +127,7 @@ function $(id) { return document.getElementById(id); }
 
 var main = $('main');
 if (!D || typeof D !== 'object') {
-  var m = h('div', 'msg', 'データがありません (VrcLogger アプリから書き出したファイルを開いてください)');
+  var m = h('div', 'msg', 'データがありません (Yorimichi から書き出したファイルを開いてください)');
   main.appendChild(m);
   $('tabs').style.display = 'none';
   document.querySelector('.filters').style.display = 'none';

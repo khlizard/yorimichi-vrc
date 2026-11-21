@@ -3,11 +3,11 @@
 use chrono::{Local, NaiveDate, NaiveDateTime};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
-use vrclogger_core::data::dtos::PlayerHit;
-use vrclogger_core::data::library::LibraryService;
-use vrclogger_core::data::library_dtos::*;
-use vrclogger_core::data::photo_query::PhotoRow;
-use vrclogger_core::export::story::{self, ExportSummary, StoryOptions};
+use yorimichi_core::data::dtos::PlayerHit;
+use yorimichi_core::data::library::LibraryService;
+use yorimichi_core::data::library_dtos::*;
+use yorimichi_core::data::photo_query::PhotoRow;
+use yorimichi_core::export::story::{self, ExportSummary, StoryOptions};
 
 use crate::app::{self, AppState};
 use crate::commands::{parse_date, CmdResult};
@@ -15,7 +15,7 @@ use crate::errors::user_message;
 
 fn with_library<T>(
     state: &AppState,
-    f: impl FnOnce(&LibraryService) -> vrclogger_core::Result<T>,
+    f: impl FnOnce(&LibraryService) -> yorimichi_core::Result<T>,
 ) -> CmdResult<T> {
     app::with_query_conn(state, |conn| f(&LibraryService::new(conn)))
 }
@@ -320,7 +320,7 @@ pub async fn export_album_html(
 #[tauri::command]
 pub async fn export_day_html(app: AppHandle, day: String, include_players: bool) -> CmdResult<()> {
     let date = require_date(&day)?;
-    let file_name = format!("vrclog-{}.html", date.format("%Y-%m-%d"));
+    let file_name = format!("yorimichi-{}.html", date.format("%Y-%m-%d"));
     export_story(app, StoryTarget::Day(date), file_name, include_players).await;
     Ok(())
 }

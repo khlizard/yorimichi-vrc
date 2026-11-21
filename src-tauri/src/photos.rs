@@ -11,8 +11,8 @@ use rusqlite::Connection;
 use serde::Serialize;
 use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{AppHandle, Emitter, Manager};
-use vrclogger_core::data::photo_query::{PhotoFileRef, PhotoService};
-use vrclogger_core::photos::{is_online_only, make_thumbnail, relink_visits, scan_folders};
+use yorimichi_core::data::photo_query::{PhotoFileRef, PhotoService};
+use yorimichi_core::photos::{is_online_only, make_thumbnail, relink_visits, scan_folders};
 
 use crate::app::{set_status, AppState};
 use crate::shell_thumb::shell_thumbnail_jpeg;

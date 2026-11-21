@@ -1,6 +1,7 @@
-# VrcLogger
+# Yorimichi for VRChat
 
 VRChat のログファイル (`output_log_*.txt`) と写真から、「いつ・どのワールドで・誰と会ったか」を記録して振り返る Windows 用デスクトップアプリです。
+VRChat の非公式ツールです。VRChat Inc. とは関係ありません。
 ログは SQLite に蓄積します。Tauri (Rust + React) で作られています。
 
 ## 主な機能
@@ -37,7 +38,7 @@ URL の一覧では Ctrl+C で URL だけをコピーでき、右クリックで
 - 同期アプリ (Dropbox、OneDrive など) のオンライン専用ファイルは中身を読みません (勝手にダウンロードしません)。ファイル名の日時だけで一覧に載せます。
   例外は、下の「メタデータの書き込み」でダウンロードを選んだときだけです。
   サムネイルは Windows のサムネイル機能 (エクスプローラーと同じ仕組み) から、表示するときに取得します。1 枚表示は縮小した画像になります。
-- サムネイルは `%LOCALAPPDATA%\app.vrclogger.desktop\thumbs` に保存します。
+- サムネイルは `%LOCALAPPDATA%\io.github.khlizard.yorimichi\thumbs` に保存します。
 
 ### メタデータの書き込み
 
@@ -59,7 +60,7 @@ URL の一覧では Ctrl+C で URL だけをコピーでき、右クリックで
 
 ### 別PCから見る
 
-DB (`vrclog.db`) を同期アプリ (Dropbox など) のフォルダに置く場合、**2 台以上の PC からアプリで開かないでください**。
+DB (`yorimichi.db`) を同期アプリ (Dropbox など) のフォルダに置く場合、**2 台以上の PC からアプリで開かないでください**。
 SQLite の WAL ファイルが別々に同期されたり、2 台から同時に書き込まれたりして壊れる恐れがあります。
 
 代わりに、メニューの「ファイル → 閲覧用 HTML を書き出す…」(トレイメニューからも可) で、
@@ -84,31 +85,31 @@ pnpm lint             # 画面側の lint (ESLint)
 ```
 
 cargo は直接実行せず、上の `pnpm` スクリプト経由で実行してください。
-`scripts/with-target.mjs` がビルド出力先をリポジトリの外 (`%LOCALAPPDATA%\vrclogger-dev\target`) に向け、
+`scripts/with-target.mjs` がビルド出力先をリポジトリの外 (`%LOCALAPPDATA%\yorimichi-dev\target`) に向け、
 exe に埋め込まれるパスからユーザー名を取り除きます。環境変数 `CARGO_TARGET_DIR` があればそちらを使います。
 出力先を外に出すのは、リポジトリを同期アプリ (Dropbox など) のフォルダに置くと、ビルド中のファイルを掴まれて失敗するためです。
 
 ## ビルドと配布
 
 ```powershell
-pnpm tauri build --no-bundle   # %LOCALAPPDATA%\vrclogger-dev\target\release\vrclogger.exe を作成
+pnpm tauri build --no-bundle   # %LOCALAPPDATA%\yorimichi-dev\target\release\yorimichi.exe を作成
 pwsh scripts/pack.ps1          # releases\ に Velopack のインストーラー (Setup.exe) を作成
 ```
 
 `pack.ps1` は `releases\` に同じバージョンがあると止まります。配布のたびに `Cargo.toml`、`src-tauri/tauri.conf.json`、`package.json` のバージョンを上げてください。
-インストーラーは `%LOCALAPPDATA%\VrcLogger` にアプリを入れます。
+インストーラーは `%LOCALAPPDATA%\Yorimichi` にアプリを入れます。
 
-アプリは GitHub の最新リリースから更新を探します。リリースには `releases\` にできた `VrcLogger-win-Setup.exe`、`releases.win.json`、`VrcLogger-<バージョン>-full.nupkg` を添付してください。
+アプリは GitHub の最新リリースから更新を探します。リリースには `releases\` にできた `Yorimichi-win-Setup.exe`、`releases.win.json`、`Yorimichi-<バージョン>-full.nupkg` を添付してください。
 
 ## 設定
 
-設定ファイルは `%APPDATA%\VrcLogger\vrclogger.settings.json` です (初回起動時に作成)。
+設定ファイルは `%APPDATA%\Yorimichi\yorimichi.settings.json` です (初回起動時に作成)。
 メニューの「ファイル → 設定…」(トレイメニューからも可) で開く設定ウィンドウから編集できます。
-ファイルを読めないときは、既定の設定で起動してその旨を表示し、元のファイルを `vrclogger.settings.json.bak` に残します。
+ファイルを読めないときは、既定の設定で起動してその旨を表示し、元のファイルを `yorimichi.settings.json.bak` に残します。
 
 | キー | 説明 |
 | --- | --- |
-| `DbPath` | SQLite データベースのパス (既定 `vrclog.db`)。相対パスは設定ファイルのあるフォルダ基準。`%VAR%` 展開可 |
+| `DbPath` | SQLite データベースのパス (既定 `yorimichi.db`)。相対パスは設定ファイルのあるフォルダ基準。`%VAR%` 展開可 |
 | `LogFolders` | `output_log_*.txt` を探すフォルダ一覧 (既定は VRChat のログフォルダ)。同名ファイルはサイズが大きい方を採用 |
 | `AutoImportIntervalMinutes` | 自動取り込みの間隔 (分)。`0` で無効 |
 | `MinimizeToTray` | `true` の場合、閉じるボタンでタスクトレイに常駐 (既定 `false`。初回に確認) |

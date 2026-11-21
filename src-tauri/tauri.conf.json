@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "VrcLogger",
+  "productName": "Yorimichi",
   "version": "0.4.0",
-  "identifier": "app.vrclogger.desktop",
+  "identifier": "io.github.khlizard.yorimichi",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "VrcLogger",
+        "title": "Yorimichi",
         "width": 1200,
         "height": 750,
         "center": true,

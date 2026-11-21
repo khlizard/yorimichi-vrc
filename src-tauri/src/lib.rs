@@ -143,7 +143,7 @@ pub fn run() {
             tauri_app.manage(AppState::new(settings));
             if let Some(msg) = settings_warning {
                 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-                handle.dialog().message(msg).title("VrcLogger").kind(MessageDialogKind::Warning).show(|_| {});
+                handle.dialog().message(msg).title("Yorimichi").kind(MessageDialogKind::Warning).show(|_| {});
             }
 
             if let Err(e) = app::reopen_query_db(&handle) {
@@ -153,7 +153,7 @@ pub fn run() {
                 let st = handle.state::<AppState>();
                 let guard = st.query.lock().unwrap();
                 if let Some(conn) = guard.as_ref() {
-                    let _ = vrclogger_core::data::import::ImportService::new(conn)
+                    let _ = yorimichi_core::data::import::ImportService::new(conn)
                         .backfill_avatar_events_from_raw_events();
                 }
             }
@@ -186,7 +186,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building VrcLogger")
+        .expect("error while building Yorimichi")
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 close_query_db(app);
@@ -205,7 +205,7 @@ pub(crate) fn close_query_db(app: &AppHandle) {
     };
     // While an import holds the write lock the checkpoint would wait out the busy timeout.
     if !st.importing.load(Ordering::SeqCst) {
-        use vrclogger_core::data::db;
+        use yorimichi_core::data::db;
         let min_mb = st.settings.lock().unwrap().auto_vacuum_min_db_mb;
         let auto = st.settings.lock().unwrap().auto_vacuum;
         if auto {

@@ -2,7 +2,7 @@
 //! error dialogs, the failure list of a metadata run). `Display` of the errors stays English and is
 //! meant for logs.
 
-use vrclogger_core::{Error, LibraryError, NameKind, PhotoError};
+use yorimichi_core::{Error, LibraryError, NameKind, PhotoError};
 
 /// The text shown to the user for a core error. SQLite and I/O errors keep the original message
 /// after a Japanese description: `（説明）: （元のメッセージ）`.

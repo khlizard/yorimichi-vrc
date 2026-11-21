@@ -2,7 +2,7 @@ import { getSettings, onSettingsChanged, type Settings } from "./api";
 
 export type ThemeSetting = "auto" | "light" | "dark";
 
-const STORAGE_KEY = "vrclogger.theme";
+const STORAGE_KEY = "yorimichi.theme";
 const query = () => window.matchMedia("(prefers-color-scheme: dark)");
 
 export function normalizeTheme(v: unknown): ThemeSetting {

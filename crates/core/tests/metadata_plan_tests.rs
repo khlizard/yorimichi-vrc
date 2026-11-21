@@ -6,9 +6,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use common::{dt, import_visits, Fixture, LOCAL_USR, V};
-use vrclogger_core::data::metadata::{MetaOutcome, MetaTarget, MetadataService, SkipReason, XmpState};
-use vrclogger_core::photos::scan_folders;
-use vrclogger_core::PhotoError;
+use yorimichi_core::data::metadata::{MetaOutcome, MetaTarget, MetadataService, SkipReason, XmpState};
+use yorimichi_core::photos::scan_folders;
+use yorimichi_core::PhotoError;
 use xmp_helpers::*;
 
 const OFFSET: i32 = 540;
@@ -426,9 +426,9 @@ fn refresh_file_marks_vanished_files_missing() {
     let p = put(&fx, "a_2026-01-10_20-30-00.png", &png_bytes(4, 4));
     scan(&fx);
     let id = id_of(&fx, "a_2026-01-10_20-30-00.png");
-    assert!(vrclogger_core::photos::refresh_file(&fx.conn, &p).unwrap());
+    assert!(yorimichi_core::photos::refresh_file(&fx.conn, &p).unwrap());
     fs::remove_file(&p).unwrap();
-    assert!(!vrclogger_core::photos::refresh_file(&fx.conn, Path::new(&p)).unwrap());
+    assert!(!yorimichi_core::photos::refresh_file(&fx.conn, Path::new(&p)).unwrap());
     let missing: bool = fx.conn.query_row("SELECT missing FROM photos WHERE id = ?1", [id], |r| r.get(0)).unwrap();
     assert!(missing);
 }

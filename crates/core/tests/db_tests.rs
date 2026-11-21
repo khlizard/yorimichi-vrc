@@ -3,8 +3,8 @@
 mod common;
 
 use common::{dt, Fixture};
-use vrclogger_core::data::db;
-use vrclogger_core::data::dtos::format_duration;
+use yorimichi_core::data::db;
+use yorimichi_core::data::dtos::format_duration;
 
 #[test]
 fn schema_has_fts5_table_and_wal() {

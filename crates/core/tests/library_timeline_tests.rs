@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use vrclogger_core::data::LibraryService;
+use yorimichi_core::data::LibraryService;
 
 const W1: &str = "wrld_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const W2: &str = "wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";

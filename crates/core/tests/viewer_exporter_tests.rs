@@ -1,8 +1,8 @@
 mod common;
 
 use common::{dt, log, Fixture};
-use vrclogger_core::data::ImportService;
-use vrclogger_core::export::{self, PLACEHOLDER};
+use yorimichi_core::data::ImportService;
+use yorimichi_core::export::{self, PLACEHOLDER};
 
 const EVIL_NAME: &str = "</script><b>x";
 

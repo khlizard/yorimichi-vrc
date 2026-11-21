@@ -4,14 +4,14 @@
 use chrono::Local;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
-use vrclogger_core::data::photo_query::{DayCount, PhotoDetail, PhotoFilter, PhotoRow, PhotoService};
+use yorimichi_core::data::photo_query::{DayCount, PhotoDetail, PhotoFilter, PhotoRow, PhotoService};
 
 use crate::app::{self, AppState};
 use crate::commands::{keyset, parse_date, write_clipboard, CmdResult};
 
 fn with_photos<T>(
     state: &AppState,
-    f: impl FnOnce(&PhotoService) -> vrclogger_core::Result<T>,
+    f: impl FnOnce(&PhotoService) -> yorimichi_core::Result<T>,
 ) -> CmdResult<T> {
     app::with_query_conn(state, |conn| f(&PhotoService::new(conn)))
 }
@@ -122,12 +122,12 @@ pub async fn photo_file_info(state: State<'_, AppState>, id: i64) -> CmdResult<P
     let folder = p.parent().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     Ok(match std::fs::metadata(p) {
         Ok(md) => PhotoFileInfo {
-            online_only: vrclogger_core::photos::is_online_only(&md),
+            online_only: yorimichi_core::photos::is_online_only(&md),
             size: Some(md.len()),
             modified: md
                 .modified()
                 .ok()
-                .map(|t| chrono::DateTime::<Local>::from(t).format(vrclogger_core::data::db::TS_FORMAT).to_string()),
+                .map(|t| chrono::DateTime::<Local>::from(t).format(yorimichi_core::data::db::TS_FORMAT).to_string()),
             read_only: md.permissions().readonly(),
             exists: true,
             path,
@@ -144,11 +144,11 @@ pub async fn copy_photo_image(state: State<'_, AppState>, id: i64) -> CmdResult<
     let r = tauri::async_runtime::spawn_blocking(move || {
         let p = std::path::Path::new(&path);
         let md = std::fs::metadata(p).map_err(|_| "ファイルが見つかりません".to_string())?;
-        if vrclogger_core::photos::is_online_only(&md) {
+        if yorimichi_core::photos::is_online_only(&md) {
             return Err("オンライン専用のファイルはコピーできません（ダウンロードされていません）。".to_string());
         }
         let (width, height, bytes) =
-            vrclogger_core::photos::rgba_pixels(p).map_err(|e| format!("画像を読み込めませんでした: {e}"))?;
+            yorimichi_core::photos::rgba_pixels(p).map_err(|e| format!("画像を読み込めませんでした: {e}"))?;
         // Borrowed pixels: `set_image` takes the image by value, so each attempt clones only this
         // borrowing struct (a reference), never the pixel buffer (about 33 MB at 4K).
         let image = arboard::ImageData {

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use chrono::{Local, NaiveDateTime};
 use tauri::{AppHandle, Emitter, Manager};
-use vrclogger_core::data::db::{self, TS_FORMAT};
+use yorimichi_core::data::db::{self, TS_FORMAT};
 
 use crate::app::{self, AppState};
 use crate::errors::user_message;
@@ -39,14 +39,14 @@ pub fn backup_due(last_backup_at: Option<&str>, now: NaiveDateTime, interval_day
 }
 
 pub fn backup_file_name(now: NaiveDateTime) -> String {
-    format!("vrclog-{}.db", now.format("%Y%m%d-%H%M%S"))
+    format!("yorimichi-{}.db", now.format("%Y%m%d-%H%M%S"))
 }
 
 fn is_backup_name(name: &str) -> bool {
-    name.starts_with("vrclog-") && name.ends_with(".db") && name.len() > "vrclog-.db".len()
+    name.starts_with("yorimichi-") && name.ends_with(".db") && name.len() > "yorimichi-.db".len()
 }
 
-/// Deletes the oldest `vrclog-*.db` files beyond `keep` (names sort chronologically). Returns the number deleted.
+/// Deletes the oldest `yorimichi-*.db` files beyond `keep` (names sort chronologically). Returns the number deleted.
 pub fn prune_backups(dir: &Path, keep: usize) -> io::Result<usize> {
     let mut names: Vec<String> = std::fs::read_dir(dir)?
         .filter_map(|e| e.ok())
@@ -170,20 +170,20 @@ mod tests {
     #[test]
     fn file_name_format() {
         let t = NaiveDate::from_ymd_opt(2026, 5, 7).unwrap().and_hms_opt(8, 9, 10).unwrap();
-        assert_eq!(backup_file_name(t), "vrclog-20260507-080910.db");
+        assert_eq!(backup_file_name(t), "yorimichi-20260507-080910.db");
     }
 
     #[test]
     fn prune_keeps_newest_and_ignores_others() {
         let dir = tempfile::tempdir().unwrap();
         for n in [
-            "vrclog-20260101-000000.db",
-            "vrclog-20260102-000000.db",
-            "vrclog-20260103-000000.db",
-            "vrclog-20260104-000000.db",
-            "vrclog.db",
+            "yorimichi-20260101-000000.db",
+            "yorimichi-20260102-000000.db",
+            "yorimichi-20260103-000000.db",
+            "yorimichi-20260104-000000.db",
+            "yorimichi.db",
             "notes.txt",
-            "vrclog-20250101-000000.db.bak",
+            "yorimichi-20250101-000000.db.bak",
         ] {
             std::fs::write(dir.path().join(n), b"x").unwrap();
         }
@@ -195,10 +195,10 @@ mod tests {
             left,
             [
                 "notes.txt",
-                "vrclog-20250101-000000.db.bak",
-                "vrclog-20260103-000000.db",
-                "vrclog-20260104-000000.db",
-                "vrclog.db"
+                "yorimichi-20250101-000000.db.bak",
+                "yorimichi-20260103-000000.db",
+                "yorimichi-20260104-000000.db",
+                "yorimichi.db"
             ]
         );
         assert_eq!(prune_backups(dir.path(), 5).unwrap(), 0);

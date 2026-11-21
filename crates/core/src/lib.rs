@@ -1,4 +1,4 @@
-//! VrcLogger core: the Tauri-independent library behind the app.
+//! Yorimichi core: the Tauri-independent library behind the app.
 //!
 //! * [`parsing`] turns VRChat `output_log_*.txt` text into structured events.
 //! * [`data`] owns the SQLite schema ([`data::db`]), the diff importer
