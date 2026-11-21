@@ -370,6 +370,8 @@ export const onSettingsChanged = (cb: (s: Settings) => void): Promise<UnlistenFn
 /** An update was downloaded and waits for a restart. */
 export const onUpdateReady = (cb: (e: UpdateReady) => void): Promise<UnlistenFn> =>
   listen<UpdateReady>("update-ready", (e) => cb(e.payload));
+/** Menu 表示 → 期間で絞り込む…: open the date range dialog. */
+export const onOpenPeriodDialog = (cb: () => void): Promise<UnlistenFn> => listen("open-period-dialog", () => cb());
 /** The photo library changed (scan added / updated / marked missing, or visit links changed). */
 export const onPhotosChanged = (cb: (e: PhotosChanged) => void): Promise<UnlistenFn> =>
   listen<PhotosChanged>("photos-changed", (e) => cb(e.payload));

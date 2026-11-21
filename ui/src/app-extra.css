@@ -29,3 +29,65 @@
   min-width: 28px;
   padding: 1px 6px;
 }
+
+/* Right end of the tab row: period chip (only while filtering), status text, import button.
+   The status text shrinks first; the tabs wrap as before. */
+.tabbar-end {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 50%;
+  padding: 4px 6px 3px 12px;
+}
+.tabbar-end .status {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--status);
+}
+.tabbar-end > button {
+  flex: 0 0 auto;
+}
+.period-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--focus);
+  background: var(--select-bg);
+  color: var(--select-fg);
+}
+.period-chip button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.period-chip button:hover:not(:disabled) {
+  background: var(--header-bg);
+}
+.period-chip .period-chip-x {
+  padding: 1px 6px;
+  border-left: 1px solid var(--focus);
+}
+
+/* 期間で絞り込む dialog */
+.period-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  white-space: normal;
+}
+.period-note {
+  margin: 0;
+  color: var(--muted);
+}
+.period-fields {
+  display: grid;
+  grid-template-columns: max-content 150px;
+  align-items: center;
+  gap: 6px 10px;
+}
+.modal-footer .period-clear {
+  margin-right: auto;
+}

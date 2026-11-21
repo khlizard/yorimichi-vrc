@@ -7,6 +7,7 @@ import {
   onAskTray,
   onImportFinished,
   onImporting,
+  onOpenPeriodDialog,
   onSettingsChanged,
   onStatus,
   onUpdateReady,
@@ -27,6 +28,7 @@ interface Options {
   showError(message: string): void;
   choose(opts: ChooseOptions): Promise<string | null>;
   openMetadata(opts: MetadataOpenOptions): void;
+  openPeriod(): void;
   refreshAll(): void;
   /** Reload what an automatic import calls for; true while some list is still stale. */
   refreshAfterAutoImport(): boolean;
@@ -111,6 +113,7 @@ export function useBackendEvents(opts: Options) {
         o.current.openMetadata({ target: { kind: "all" }, label: "書き込めるすべての写真", allowDownload: true }),
       ),
     );
+    unlisten.push(onOpenPeriodDialog(() => o.current.openPeriod()));
     unlisten.push(
       onImportFinished(({ changed, automatic }) => {
         if (changed && !automatic) {

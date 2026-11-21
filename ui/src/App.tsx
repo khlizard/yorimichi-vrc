@@ -3,6 +3,7 @@ import { importNow, type Settings } from "./api";
 import { DialogProvider, useDialog } from "./components/Dialog";
 import { MetadataProvider, useMetadataDialog } from "./features/metadata/MetadataProvider";
 import { errText } from "./components/util";
+import { PeriodDialog, periodDate, type Period } from "./components/PeriodDialog";
 import { AvatarsTab } from "./features/logs/AvatarsTab";
 import { LogsTab } from "./features/logs/LogsTab";
 import "./app-extra.css";
@@ -37,6 +38,7 @@ function Main() {
   const metadata = useMetadataDialog();
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
+  const [periodOpen, setPeriodOpen] = useState(false);
   const [status, setStatus] = useState("");
   const [importing, setImporting] = useState(false);
   // Latest settings, kept for features that depend on them (badges, day boundary).
@@ -72,6 +74,11 @@ function Main() {
     refreshAllRef.current();
   }, [from, to]);
 
+  const setPeriod = (p: Period) => {
+    setFrom(p.from);
+    setTo(p.to);
+  };
+
   useBackendEvents({
     setStatus,
     setImporting,
@@ -79,6 +86,7 @@ function Main() {
     showError,
     choose,
     openMetadata: metadata.open,
+    openPeriod: () => setPeriodOpen(true),
     refreshAll,
     refreshAfterAutoImport,
     hasPending,
@@ -148,28 +156,6 @@ function Main() {
   return (
     <AppNavContext.Provider value={appNav}>
     <div className="app">
-      <div className="toolbar">
-        <button disabled={importing} onClick={() => importNow().catch((e) => showError(errText(e)))}>
-          再取り込み
-        </button>
-        <label htmlFor="date-from" className="period-label">
-          期間:
-        </label>
-        <input id="date-from" type="date" style={{ width: 130 }} value={from ?? ""} onChange={(e) => setFrom(e.target.value || null)} />
-        <span>〜</span>
-        <input id="date-to" type="date" aria-label="期間の終了日" style={{ width: 130 }} value={to ?? ""} onChange={(e) => setTo(e.target.value || null)} />
-        <button
-          onClick={() => {
-            setFrom(null);
-            setTo(null);
-          }}
-        >
-          クリア
-        </button>
-        <div className="status ellipsis" title={status} role="status">
-          {status}
-        </div>
-      </div>
       <div className="tabbar">
       <div className="histnav">
         <button type="button" aria-label="戻る" title="戻る (Alt+←)" disabled={!canBack} onClick={() => move(-1)}>
@@ -196,7 +182,34 @@ function Main() {
           </button>
         ))}
       </div>
+      <div className="tabbar-end">
+        {(from != null || to != null) && (
+          <span className="period-chip">
+            <button type="button" title="期間を変更" onClick={() => setPeriodOpen(true)}>
+              期間 {periodDate(from, "最初")} 〜 {periodDate(to, "最後")}
+            </button>
+            <button type="button" className="period-chip-x" aria-label="期間の絞り込みを解除" title="期間の絞り込みを解除" onClick={() => setPeriod({ from: null, to: null })}>
+              ×
+            </button>
+          </span>
+        )}
+        <div className="status ellipsis" title={status} role="status">
+          {status}
+        </div>
+        <button type="button" disabled={importing} onClick={() => importNow().catch((e) => showError(errText(e)))}>
+          再取り込み
+        </button>
       </div>
+      </div>
+      {periodOpen && (
+        <PeriodDialog
+          initial={{ from, to }}
+          done={(p) => {
+            setPeriodOpen(false);
+            if (p) setPeriod(p);
+          }}
+        />
+      )}
       <div className="tabbody">
         {panel("timeline", <TimelineTab ref={refs.timeline} active={tab === "timeline"} dayStartHour={settings?.DayStartHour ?? 0} />)}
         {panel(
