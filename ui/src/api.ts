@@ -195,6 +195,8 @@ export interface Settings {
   LastBackupAt: string | null;
   /** http(s) URL or folder; empty = never check. */
   UpdateFeed: string;
+  /** Display theme. */
+  Theme: "auto" | "light" | "dark";
 }
 
 export interface Status {

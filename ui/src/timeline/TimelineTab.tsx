@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { type PhotoRow } from "../api";
+import { onPhotosChanged, type PhotoRow } from "../api";
+import { useMetadataDialog } from "../metadata/MetadataProvider";
 import { useDialog } from "../components/Dialog";
 import { useLatest } from "../components/hooks";
 import { errText, type TabHandle } from "../components/util";
@@ -93,6 +94,7 @@ function Tile({ p, mini, onOpen }: { p: PhotoRow; mini?: boolean; onOpen: () => 
 export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTab({ active, dayStartHour }, ref) {
   const { showError, choose } = useDialog();
   const nav = useNav();
+  const metadata = useMetadataDialog();
   const [day, setDay] = useState<string | null>(null);
   const [data, setData] = useState<TimelineDay | null>(null);
   const [memories, setMemories] = useState<MemoryYear[]>([]);
@@ -160,6 +162,19 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
+
+  // Photo files / metadata changed: reload the current day once the tab has been shown.
+  useEffect(() => {
+    const un = onPhotosChanged(() => {
+      if (!started.current || !dayRef.current) return;
+      if (!activeRef.current) dirty.current = true;
+      else void loadRef.current(dayRef.current, true);
+    });
+    return () => {
+      un.then((f) => f()).catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useImperativeHandle(
     ref,
@@ -311,6 +326,14 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
         <span className="tl-spacer" />
         <button type="button" disabled={!day || exporting} onClick={() => void exportDay()}>
           この日を HTML に書き出す…
+        </button>
+        <button
+          type="button"
+          disabled={!day}
+          title="この日の写真にメタデータを書き込む"
+          onClick={() => day && metadata.open({ target: { kind: "day", day }, label: `${day} の写真` })}
+        >
+          メタデータ…
         </button>
       </div>
       {day && (

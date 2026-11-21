@@ -17,6 +17,8 @@ import {
   type Settings,
 } from "./api";
 import { DialogProvider, useDialog } from "./components/Dialog";
+import { MetadataProvider, useMetadataDialog } from "./metadata/MetadataProvider";
+import { onOpenMetadataDialog } from "./metadataApi";
 import { errText, type TabHandle } from "./components/util";
 import { AvatarsTab } from "./tabs/AvatarsTab";
 import { LogsTab } from "./tabs/LogsTab";
@@ -53,13 +55,18 @@ const PENDING_STATUS = "新しいログを取り込みました（続きを読�
 export default function App() {
   return (
     <DialogProvider>
-      <Main />
+      <MetadataProvider>
+        <Main />
+      </MetadataProvider>
     </DialogProvider>
   );
 }
 
 function Main() {
   const { showError, choose } = useDialog();
+  const metadata = useMetadataDialog();
+  const openMetadataRef = useRef(metadata.open);
+  openMetadataRef.current = metadata.open;
   const [tab, setTab] = useState<TabId>("timeline");
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
@@ -165,6 +172,7 @@ function Main() {
       }),
     );
     unlisten.push(onImporting((b) => setImporting(b)));
+    unlisten.push(onOpenMetadataDialog(() => openMetadataRef.current({})));
     unlisten.push(
       onImportFinished(({ changed, automatic }) => {
         if (changed && !automatic) {

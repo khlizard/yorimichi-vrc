@@ -55,6 +55,84 @@ fn has_photo_extension(path: &Path) -> bool {
         .is_some_and(|e| PHOTO_EXTENSIONS.contains(&e.as_str()))
 }
 
+const UPSERT_SQL: &str = r"INSERT INTO photos (path, file_name, file_size, mtime, taken_at, time_source, width, height,
+                                  xmp_world_id, xmp_world_name, xmp_author_id, favorite, missing, online_only)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, 0, ?12)
+              ON CONFLICT(path) DO UPDATE SET
+                file_name = excluded.file_name, file_size = excluded.file_size, mtime = excluded.mtime,
+                taken_at = excluded.taken_at, time_source = excluded.time_source,
+                width = excluded.width, height = excluded.height,
+                xmp_world_id = excluded.xmp_world_id, xmp_world_name = excluded.xmp_world_name,
+                xmp_author_id = excluded.xmp_author_id, missing = 0, online_only = excluded.online_only
+              RETURNING id";
+
+/// Size / modification time / cloud state of a file, as stored in the table.
+struct Stamp {
+    size: i64,
+    mtime_dt: NaiveDateTime,
+    mtime: String,
+    online: bool,
+}
+
+impl Stamp {
+    fn of(md: &std::fs::Metadata) -> Self {
+        let mtime_dt: NaiveDateTime = md
+            .modified()
+            .map(|t| DateTime::<Local>::from(t).naive_local())
+            .unwrap_or_else(|_| DateTime::<Local>::from(SystemTime::UNIX_EPOCH).naive_local());
+        Stamp { size: md.len() as i64, mtime_dt, mtime: db::ts(mtime_dt), online: is_online_only(md) }
+    }
+}
+
+/// Reads the file's metadata and upserts its row (`id` and `favorite` are kept). The single
+/// code path shared by [`scan_folders`] and [`refresh_file`].
+fn upsert_photo(upsert: &mut rusqlite::Statement, path: &Path, stamp: &Stamp) -> Result<i64> {
+    // Online-only files must not be opened (that would download them).
+    let meta = read_meta(path, stamp.mtime_dt, !stamp.online);
+    Ok(upsert.query_row(
+        params![
+            path.to_string_lossy(),
+            path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            stamp.size,
+            stamp.mtime,
+            db::ts(meta.taken_at),
+            meta.time_source.as_str(),
+            meta.width,
+            meta.height,
+            meta.world_id,
+            meta.world_name,
+            meta.author_id,
+            stamp.online
+        ],
+        |r| r.get(0),
+    )?)
+}
+
+/// Re-reads one file and updates its row. `Ok(false)` if the file no longer exists (the row,
+/// if any, is flagged `missing`).
+pub fn refresh_file(conn: &Connection, path: &Path) -> Result<bool> {
+    let md = match std::fs::metadata(path) {
+        Ok(md) => md,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            conn.execute("UPDATE photos SET missing = 1 WHERE path = ?1", [path.to_string_lossy()])?;
+            return Ok(false);
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let id = {
+        let mut upsert = conn.prepare(UPSERT_SQL)?;
+        upsert_photo(&mut upsert, path, &Stamp::of(&md))?
+    };
+    // Only this row's link is re-derived (a full relink would scan the whole table).
+    conn.execute(
+        r"UPDATE photos SET visit_id = (SELECT v.id FROM visits v
+                 WHERE v.join_time <= photos.taken_at AND v.leave_time >= photos.taken_at
+                 ORDER BY v.join_time DESC LIMIT 1) WHERE id = ?1",
+        [id],
+    )?;
+    Ok(true)
+}
+
 pub fn scan_folders(
     conn: &Connection,
     folders: &[PathBuf],
@@ -83,18 +161,7 @@ pub fn scan_folders(
     let mut seen: HashSet<i64> = HashSet::new();
     let mut unavailable: Vec<&PathBuf> = Vec::new();
     {
-        let mut upsert = tx.prepare(
-            r"INSERT INTO photos (path, file_name, file_size, mtime, taken_at, time_source, width, height,
-                                  xmp_world_id, xmp_world_name, xmp_author_id, favorite, missing, online_only)
-              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, 0, ?12)
-              ON CONFLICT(path) DO UPDATE SET
-                file_name = excluded.file_name, file_size = excluded.file_size, mtime = excluded.mtime,
-                taken_at = excluded.taken_at, time_source = excluded.time_source,
-                width = excluded.width, height = excluded.height,
-                xmp_world_id = excluded.xmp_world_id, xmp_world_name = excluded.xmp_world_name,
-                xmp_author_id = excluded.xmp_author_id, missing = 0, online_only = excluded.online_only
-              RETURNING id",
-        )?;
+        let mut upsert = tx.prepare(UPSERT_SQL)?;
 
         for folder in folders {
             // An unreadable root (e.g. unplugged drive) must not flag its photos as missing.
@@ -114,39 +181,16 @@ pub fn scan_folders(
                     }
                 }
                 let path_str = entry.path().to_string_lossy().into_owned();
-                let size = md.len() as i64;
-                let mtime_dt: NaiveDateTime = md
-                    .modified()
-                    .map(|t| DateTime::<Local>::from(t).naive_local())
-                    .unwrap_or_else(|_| DateTime::<Local>::from(SystemTime::UNIX_EPOCH).naive_local());
-                let mtime = db::ts(mtime_dt);
-                let online = is_online_only(&md);
+                let stamp = Stamp::of(&md);
                 let prev = existing.get(&path_str);
                 if let Some(e) = prev {
                     seen.insert(e.id);
-                    if !e.missing && e.size == size && e.mtime == mtime && e.online_only == online {
+                    if !e.missing && e.size == stamp.size && e.mtime == stamp.mtime && e.online_only == stamp.online
+                    {
                         continue;
                     }
                 }
-                // Online-only files must not be opened (that would download them).
-                let meta = read_meta(entry.path(), mtime_dt, !online);
-                let id: i64 = upsert.query_row(
-                    params![
-                        path_str,
-                        entry.file_name().to_string_lossy(),
-                        size,
-                        mtime,
-                        db::ts(meta.taken_at),
-                        meta.time_source.as_str(),
-                        meta.width,
-                        meta.height,
-                        meta.world_id,
-                        meta.world_name,
-                        meta.author_id,
-                        online
-                    ],
-                    |r| r.get(0),
-                )?;
+                let id = upsert_photo(&mut upsert, entry.path(), &stamp)?;
                 seen.insert(id);
                 if prev.is_some() {
                     summary.updated += 1;

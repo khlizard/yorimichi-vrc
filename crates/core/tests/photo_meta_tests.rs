@@ -175,3 +175,35 @@ fn read_meta_jpeg_dimensions() {
     let m = read_meta(&p, dt(2020, 1, 1, 0, 0, 0), true);
     assert_eq!((m.width, m.height), (Some(30), Some(20)));
 }
+
+#[test]
+fn read_meta_jpeg_uses_xmp_date_and_world() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut jpg = Vec::new();
+    image::RgbImage::new(30, 20)
+        .write_to(&mut Cursor::new(&mut jpg), image::ImageFormat::Jpeg)
+        .unwrap();
+    let mut payload = b"http://ns.adobe.com/xap/1.0/\0".to_vec();
+    payload.extend_from_slice(XMP.as_bytes());
+    let mut seg = vec![0xFF, 0xE1];
+    seg.extend_from_slice(&((payload.len() + 2) as u16).to_be_bytes());
+    seg.extend_from_slice(&payload);
+    let with_xmp = [&jpg[..2], &seg[..], &jpg[2..]].concat();
+
+    let p = dir.path().join("VRChat_2022-01-02_03-04-05.678_30x20.jpg");
+    std::fs::write(&p, &with_xmp).unwrap();
+    let m = read_meta(&p, dt(2020, 1, 1, 0, 0, 0), true);
+    assert_eq!(m.time_source, TimeSource::Xmp);
+    assert_eq!(m.taken_at, dt(2026, 11, 20, 0, 42, 34));
+    assert_eq!((m.width, m.height), (Some(30), Some(20)));
+    assert_eq!(m.world_name.as_deref(), Some("Whisper & Sleep"));
+    assert_eq!(m.world_id.as_deref(), Some("wrld_11111111-1111-1111-1111-111111111111"));
+    assert!(m.author_id.is_some());
+
+    // Without reading content, only the name counts; a JPEG without XMP is unchanged.
+    assert_eq!(read_meta(&p, dt(2020, 1, 1, 0, 0, 0), false).time_source, TimeSource::Name);
+    let plain = dir.path().join("VRChat_2022-01-02_03-04-05.678_a.jpg");
+    std::fs::write(&plain, &jpg).unwrap();
+    let m = read_meta(&plain, dt(2020, 1, 1, 0, 0, 0), true);
+    assert_eq!((m.time_source, m.world_id), (TimeSource::Name, None));
+}

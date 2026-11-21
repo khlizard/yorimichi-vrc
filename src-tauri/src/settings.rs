@@ -7,6 +7,27 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_LOG_FOLDER: &str = "%USERPROFILE%\\AppData\\LocalLow\\VRChat\\VRChat";
 pub const DEFAULT_PHOTO_FOLDER: &str = "%USERPROFILE%\\Pictures\\VRChat";
 
+/// Display theme. Stored as `"auto" | "light" | "dark"`; any other value reads as auto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeSetting {
+    #[default]
+    Auto,
+    Light,
+    Dark,
+}
+
+impl<'de> Deserialize<'de> for ThemeSetting {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let v = serde_json::Value::deserialize(d)?;
+        Ok(match v.as_str() {
+            Some("light") => ThemeSetting::Light,
+            Some("dark") => ThemeSetting::Dark,
+            _ => ThemeSetting::Auto,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase", default)]
 pub struct Settings {
@@ -31,6 +52,7 @@ pub struct Settings {
     /// Local time, `YYYY-MM-DD HH:MM:SS`.
     pub last_backup_at: Option<String>,
     pub update_feed: String,
+    pub theme: ThemeSetting,
 }
 
 impl Default for Settings {
@@ -55,6 +77,7 @@ impl Default for Settings {
             backup_keep_count: 3,
             last_backup_at: None,
             update_feed: String::new(),
+            theme: ThemeSetting::Auto,
         }
     }
 }
@@ -186,6 +209,22 @@ mod tests {
         assert_eq!(s.backup_keep_count, 3);
         assert_eq!(s.last_backup_at, None);
         assert_eq!(s.update_feed, "");
+        assert_eq!(s.theme, ThemeSetting::Auto);
+    }
+
+    #[test]
+    fn theme_round_trips_and_unknown_is_auto() {
+        let s = Settings { theme: ThemeSetting::Dark, ..Settings::default() };
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("\"Theme\":\"dark\""));
+        let back: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.theme, ThemeSetting::Dark);
+        let light: Settings = serde_json::from_str(r#"{"Theme":"light"}"#).unwrap();
+        assert_eq!(light.theme, ThemeSetting::Light);
+        for bad in [r#"{"Theme":"sepia"}"#, r#"{"Theme":7}"#, r#"{"Theme":null}"#] {
+            let s: Settings = serde_json::from_str(bad).unwrap();
+            assert_eq!(s.theme, ThemeSetting::Auto, "{bad}");
+        }
     }
 
     #[test]

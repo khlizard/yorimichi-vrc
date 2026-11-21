@@ -1,10 +1,17 @@
-/* Statistics: normal (light) surface. One blue in 5 steps for activity. */
+/* Statistics: follows the app theme. One blue in 5 steps for activity. */
 .st {
   --lv0: var(--line-soft);
   --lv1: color-mix(in srgb, var(--focus) 25%, var(--bg));
   --lv2: color-mix(in srgb, var(--focus) 48%, var(--bg));
   --lv3: color-mix(in srgb, var(--focus) 74%, var(--bg));
   --lv4: var(--focus);
+}
+:root[data-theme="dark"] .st {
+  --lv0: #24262b;
+  --lv1: #1f3a57;
+  --lv2: #25588a;
+  --lv3: #3a82c8;
+  --lv4: #5aa9f5;
   overflow: auto;
   padding: 12px 16px 32px;
 }

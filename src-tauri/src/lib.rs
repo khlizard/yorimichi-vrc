@@ -3,6 +3,7 @@ mod commands;
 mod idle;
 mod library_commands;
 mod maintenance;
+mod metadata_commands;
 mod photos;
 mod settings;
 pub mod shell_thumb;
@@ -10,19 +11,23 @@ mod update;
 
 use std::sync::atomic::Ordering;
 
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 
 use app::AppState;
-use settings::Settings;
+use settings::{Settings, ThemeSetting};
 
 const ID_MENU_EXPORT: &str = "menu_export";
 const ID_MENU_BACKUP: &str = "menu_backup";
+const ID_MENU_METADATA: &str = "menu_metadata";
 const ID_MENU_SETTINGS: &str = "menu_settings";
 const ID_MENU_UPDATE: &str = "menu_update";
 const ID_MENU_EXIT: &str = "menu_exit";
+const ID_MENU_THEME_AUTO: &str = "menu_theme_auto";
+const ID_MENU_THEME_LIGHT: &str = "menu_theme_light";
+const ID_MENU_THEME_DARK: &str = "menu_theme_dark";
 const ID_TRAY_OPEN: &str = "tray_open";
 const ID_TRAY_IMPORT: &str = "tray_import";
 const ID_TRAY_EXPORT: &str = "tray_export";
@@ -37,10 +42,18 @@ fn handle_menu(app: &AppHandle, id: &str) {
         ID_MENU_BACKUP => {
             tauri::async_runtime::spawn(maintenance::backup_now(app.clone(), false));
         }
+        ID_MENU_METADATA => {
+            // Only opens the confirmation dialog; nothing is written until the user confirms there.
+            app::show_main(app);
+            let _ = app.emit("open-metadata-dialog", ());
+        }
         ID_MENU_SETTINGS | ID_TRAY_SETTINGS => app::open_settings(app),
         ID_MENU_UPDATE => {
             tauri::async_runtime::spawn(update::check(app.clone(), true));
         }
+        ID_MENU_THEME_AUTO => app::choose_theme(app, ThemeSetting::Auto),
+        ID_MENU_THEME_LIGHT => app::choose_theme(app, ThemeSetting::Light),
+        ID_MENU_THEME_DARK => app::choose_theme(app, ThemeSetting::Dark),
         ID_MENU_EXIT | ID_TRAY_EXIT => app::exit_app(app),
         ID_TRAY_OPEN => app::show_main(app),
         ID_TRAY_IMPORT => {
@@ -57,10 +70,22 @@ fn build_window_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let exit = MenuItem::with_id(app, ID_MENU_EXIT, "終了(&X)", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let file = Submenu::with_items(app, "ファイル(&F)", true, &[&export, &backup, &sep1, &settings, &sep2, &exit])?;
+    let metadata = MenuItem::with_id(app, ID_MENU_METADATA, "写真にメタデータを書き込む…", true, None::<&str>)?;
+    let file =
+        Submenu::with_items(app, "ファイル(&F)", true, &[&export, &backup, &metadata, &sep1, &settings, &sep2, &exit])?;
+    let current = app.state::<AppState>().settings.lock().unwrap().theme;
+    let check = |id: &str, text: &str, t: ThemeSetting| CheckMenuItem::with_id(app, id, text, true, current == t, None::<&str>);
+    let theme_items = vec![
+        (ThemeSetting::Auto, check(ID_MENU_THEME_AUTO, "自動", ThemeSetting::Auto)?),
+        (ThemeSetting::Light, check(ID_MENU_THEME_LIGHT, "ライト", ThemeSetting::Light)?),
+        (ThemeSetting::Dark, check(ID_MENU_THEME_DARK, "ダーク", ThemeSetting::Dark)?),
+    ];
+    let theme_menu = Submenu::with_items(app, "テーマ", true, &[&theme_items[0].1, &theme_items[1].1, &theme_items[2].1])?;
+    let view = Submenu::with_items(app, "表示(&V)", true, &[&theme_menu])?;
+    *app.state::<AppState>().theme_items.lock().unwrap() = theme_items;
     let update = MenuItem::with_id(app, ID_MENU_UPDATE, "更新を確認", true, None::<&str>)?;
     let help = Submenu::with_items(app, "ヘルプ(&H)", true, &[&update])?;
-    Menu::with_items(app, &[&file, &help])
+    Menu::with_items(app, &[&file, &view, &help])
 }
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -201,6 +226,9 @@ pub fn run() {
             library_commands::open_world_page,
             library_commands::open_user_page,
             library_commands::open_instance,
+            metadata_commands::metadata_plan,
+            metadata_commands::metadata_run,
+            metadata_commands::metadata_cancel,
         ])
         .setup(|tauri_app| {
             let handle = tauri_app.handle().clone();
@@ -223,6 +251,7 @@ pub fn run() {
                 window.set_menu(build_window_menu(&handle)?)?;
             }
             build_tray(&handle)?;
+            app::apply_theme(&handle);
             // Global listener: receives both window-menu and tray-menu events (tray registers none itself, to avoid double handling).
             handle.on_menu_event(|app, event| handle_menu(app, event.id().as_ref()));
 

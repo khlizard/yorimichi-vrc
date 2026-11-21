@@ -111,6 +111,7 @@ pub async fn save_settings(
         cur.backup_interval_days = settings.backup_interval_days.max(0);
         cur.backup_keep_count = settings.backup_keep_count.max(1);
         cur.update_feed = settings.update_feed.trim().to_string();
+        cur.theme = settings.theme;
         // LastViewerExportFolder and LastBackupAt are owned by the backend; keep the stored values.
         cur.save()?;
         let _ = app.emit("settings-changed", cur.clone());
@@ -121,6 +122,7 @@ pub async fn save_settings(
         }
         app::update_title(&app);
     }
+    app::apply_theme(&app);
     app::reset_prune(&app);
     app::restart_timer(&app);
     if photos_changed {

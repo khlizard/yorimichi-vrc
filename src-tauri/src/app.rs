@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 use chrono::Local;
 use rusqlite::Connection;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::menu::CheckMenuItem;
+use tauri::{AppHandle, Emitter, Manager, Theme, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 use vrclogger_core::data::db;
 use vrclogger_core::data::import::ImportService;
@@ -18,7 +19,7 @@ use vrclogger_core::parsing::ParseOptions;
 
 use crate::maintenance::should_vacuum;
 use crate::photos::{self, PhotosChanged};
-use crate::settings::{settings_dir, Settings};
+use crate::settings::{settings_dir, Settings, ThemeSetting};
 
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
 
@@ -41,6 +42,10 @@ pub struct AppState {
     pub thumb_generation: AtomicU64,
     /// Set when a shell thumbnail request hydrated an online-only file; disables that path for the session.
     pub shell_thumb_disabled: AtomicBool,
+    /// Check items of the window menu's 表示 > テーマ submenu (kept in sync with `settings.theme`).
+    pub theme_items: Mutex<Vec<(ThemeSetting, CheckMenuItem<tauri::Wry>)>>,
+    /// Asks a running metadata write/remove batch to stop after the current file.
+    pub metadata_cancel: AtomicBool,
 }
 
 impl AppState {
@@ -59,6 +64,8 @@ impl AppState {
             thumb_failed: Mutex::new(HashSet::new()),
             thumb_generation: AtomicU64::new(0),
             shell_thumb_disabled: AtomicBool::new(false),
+            theme_items: Mutex::new(Vec::new()),
+            metadata_cancel: AtomicBool::new(false),
         }
     }
 }
@@ -182,6 +189,47 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
+fn native_theme(t: ThemeSetting) -> Option<Theme> {
+    match t {
+        ThemeSetting::Auto => None,
+        ThemeSetting::Light => Some(Theme::Light),
+        ThemeSetting::Dark => Some(Theme::Dark),
+    }
+}
+
+/// Applies `settings.theme` to the native window chrome (main + settings) and the menu checks.
+pub fn apply_theme(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    let theme = st.settings.lock().unwrap().theme;
+    let native = native_theme(theme);
+    // The app-wide call also themes the menu bar; the per-window calls cover the windows that exist now.
+    app.set_theme(native);
+    for label in ["main", "settings"] {
+        if let Some(w) = app.get_webview_window(label) {
+            let _ = w.set_theme(native);
+        }
+    }
+    for (t, item) in st.theme_items.lock().unwrap().iter() {
+        let _ = item.set_checked(*t == theme);
+    }
+}
+
+/// Window-menu choice: saves immediately, applies it and tells every window.
+pub fn choose_theme(app: &AppHandle, theme: ThemeSetting) {
+    let st = app.state::<AppState>();
+    let (snapshot, saved) = {
+        let mut s = st.settings.lock().unwrap();
+        s.theme = theme;
+        let saved = s.save();
+        (s.clone(), saved)
+    };
+    apply_theme(app);
+    if let Err(e) = saved {
+        set_status(app, format!("設定を保存できません: {e}"));
+    }
+    let _ = app.emit("settings-changed", snapshot);
+}
+
 /// Shows (or creates) the settings window.
 pub fn open_settings(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("settings") {
@@ -190,8 +238,10 @@ pub fn open_settings(app: &AppHandle) {
         let _ = w.set_focus();
         return;
     }
+    let theme = native_theme(app.state::<AppState>().settings.lock().unwrap().theme);
     let built = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?window=settings".into()))
         .title("設定 — VrcLogger")
+        .theme(theme)
         .inner_size(760.0, 780.0)
         .min_inner_size(560.0, 480.0)
         .resizable(true)

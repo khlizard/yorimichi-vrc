@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
 import { onPhotosChanged, type PhotoRow } from "../api";
 import { useDialog } from "../components/Dialog";
+import { useMetadataDialog } from "../metadata/MetadataProvider";
 import { useLatest } from "../components/hooks";
 import { errText, type TabHandle } from "../components/util";
 import { useNav } from "../nav";
@@ -50,6 +51,7 @@ function Cover({ id }: { id: number | null }) {
 
 export const AlbumsTab = forwardRef<AlbumsHandle, Props>(function AlbumsTab({ active, dayStartHour }, ref) {
   const { showError, choose, prompt } = useDialog();
+  const metadata = useMetadataDialog();
   const nav = useNav();
   const activated = useRef(false);
   const gen = useRef(0);
@@ -322,6 +324,16 @@ export const AlbumsTab = forwardRef<AlbumsHandle, Props>(function AlbumsTab({ ac
               <span className="ps-spacer" />
               <button type="button" disabled={busy} onClick={() => void exportHtml()}>
                 HTML に書き出す…
+              </button>
+              <button
+                type="button"
+                disabled={busy || !current}
+                title="このアルバムの写真にメタデータを書き込む"
+                onClick={() =>
+                  current && metadata.open({ target: { kind: "album", albumId: current.id }, label: `アルバム「${current.name}」` })
+                }
+              >
+                メタデータ…
               </button>
               <button type="button" disabled={busy} onClick={() => void remove()}>
                 アルバムを削除

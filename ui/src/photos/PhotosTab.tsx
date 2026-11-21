@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { describeAdd, useAddToAlbum } from "../albums/addToAlbum";
 import { useDialog } from "../components/Dialog";
+import { useMetadataDialog } from "../metadata/MetadataProvider";
 import { useLatest } from "../components/hooks";
 import { StarIcon } from "../components/Star";
 import { errText, type TabHandle } from "../components/util";
@@ -85,6 +86,7 @@ export function PhotosTab({
   ref?: Ref<PhotosHandle>;
 }) {
   const { showError } = useDialog();
+  const metadata = useMetadataDialog();
   const nav = useNav();
   const addToAlbum = useAddToAlbum();
   const range = useLatest({ from, to });
@@ -348,6 +350,15 @@ export function PhotosTab({
               }
             >
               アルバムに追加…
+            </button>
+            <button
+              type="button"
+              disabled={sel.size === 0}
+              onClick={() =>
+                metadata.open({ target: { kind: "ids", ids: [...sel] }, label: `選択した ${sel.size.toLocaleString("ja-JP")} 枚` })
+              }
+            >
+              メタデータを書き込む…
             </button>
             <button type="button" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
               選択を解除

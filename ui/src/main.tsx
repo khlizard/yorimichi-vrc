@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import SettingsWindow from "./SettingsWindow";
 import "./styles.css";
+import { initTheme } from "./theme";
+
+initTheme();
 
 const isSettings = new URLSearchParams(location.search).get("window") === "settings";
 

@@ -5,6 +5,7 @@ pub mod dtos;
 pub mod import;
 pub mod library;
 pub mod library_dtos;
+pub mod metadata;
 pub mod photo_query;
 pub mod query;
 

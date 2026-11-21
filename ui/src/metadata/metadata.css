@@ -1,0 +1,80 @@
+.md-modal {
+  width: 520px;
+}
+.md-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 70vh;
+  overflow: auto;
+}
+.md-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.md-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.md-legend {
+  padding: 0;
+  color: var(--muted);
+}
+.md-modes label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.md-label {
+  font-weight: bold;
+  word-break: break-all;
+}
+.md-count {
+  font-weight: bold;
+}
+.md-num {
+  font-variant-numeric: tabular-nums;
+}
+.md-muted,
+.md-warn,
+.md-sub {
+  color: var(--muted);
+}
+.md-list {
+  margin: 0;
+  padding-left: 20px;
+}
+.md-notes {
+  color: var(--muted);
+}
+.md-dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+}
+.md-dl dt {
+  color: var(--muted);
+}
+.md-dl dd {
+  margin: 0;
+}
+.md-progress {
+  width: 100%;
+}
+.md-failures {
+  margin: 0;
+  padding: 4px 8px 4px 24px;
+  max-height: 11.5em;
+  overflow: auto;
+  border: 1px solid var(--line);
+  word-break: break-all;
+}

@@ -17,6 +17,7 @@ import {
 } from "../api";
 import { useDialog } from "../components/Dialog";
 import { errText } from "../components/util";
+import { applyTheme, normalizeTheme, type ThemeSetting } from "../theme";
 
 const mb = (bytes: number) => Math.round(bytes / 1024 / 1024);
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -105,11 +106,13 @@ export function SettingsTab({ onClose }: { onClose: () => void }) {
         })
         .catch(() => {});
     refresh();
-    // Only LastBackupAt is taken from the event: it is backend-owned, the rest of the form is the user's draft.
+    // Only LastBackupAt (backend-owned) and Theme (the window menu can change it) are taken from the event; the rest of the form is the user's draft.
     const un = [
       onStatus(refresh),
       onSettingsChanged((n) => {
-        if (alive) setLastBackupAt(n.LastBackupAt);
+        if (!alive) return;
+        setLastBackupAt(n.LastBackupAt);
+        setS((prev) => (prev ? { ...prev, Theme: normalizeTheme(n.Theme) } : prev));
       }),
     ];
     return () => {
@@ -250,6 +253,22 @@ export function SettingsTab({ onClose }: { onClose: () => void }) {
           <div className="footnote">この時刻までは前日として扱います。</div>
 
           <div className="section-label">表示</div>
+          <div className="inline">
+            <label htmlFor="theme">テーマ</label>
+            <select
+              id="theme"
+              value={normalizeTheme(s.Theme)}
+              onChange={(e) => {
+                const Theme = normalizeTheme(e.target.value) as ThemeSetting;
+                patch({ Theme });
+                applyTheme(Theme);
+              }}
+            >
+              <option value="auto">自動 (Windows の設定に合わせる)</option>
+              <option value="light">ライト</option>
+              <option value="dark">ダーク</option>
+            </select>
+          </div>
           <label className="check">
             <input type="checkbox" checked={s.ShowFirstMet} onChange={(e) => patch({ ShowFirstMet: e.target.checked })} />
             初めて会った人にバッジを付ける
