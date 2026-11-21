@@ -77,8 +77,10 @@ DB に触れない自己完結の HTML を保存できます。同期される�
 ```powershell
 pnpm install          # 依存パッケージの取得
 pnpm tauri dev        # 開発モードで起動
-pnpm test:rust        # テスト (logs/ に実ログを置くと実ログのテストも実行)
+pnpm test:rust        # Rust のテスト (logs/ に実ログを置くと実ログのテストも実行)
 pnpm lint:rust        # clippy
+pnpm test             # 画面側のテスト (vitest)
+pnpm lint             # 画面側の lint (ESLint)
 ```
 
 cargo は直接実行せず、上の `pnpm` スクリプト経由で実行してください。
@@ -131,7 +133,7 @@ pwsh scripts/pack.ps1          # releases\ に Velopack のインストーラー
 ```
 crates/core/   # ログ解析・SQLite 取り込み・検索・HTML 書き出し (Tauri 非依存、テストはここ)
 src-tauri/     # Tauri アプリ (コマンド、トレイ、自動取り込み、設定)
-ui/            # 画面 (React + TypeScript、Vite)
+ui/            # 画面 (React + TypeScript、Vite)。ui/src/features/ に画面ごと、ui/src/components/ に共通部品
 scripts/       # pack.ps1 (Velopack パッケージ作成)、with-target.mjs (cargo の出力先とパスの置き換え)
 logs/          # (Git 管理外) 実ログを置くと実ログのテストが実行される
 ```

@@ -216,19 +216,6 @@ export interface UpdateReady {
   version: string;
 }
 
-export interface ChooseButton {
-  id: string;
-  label: string;
-  primary?: boolean;
-}
-export interface ChooseOptions {
-  title: string;
-  message: string;
-  buttons: ChooseButton[];
-  /** Result of Escape; defaults to null. */
-  cancelId?: string;
-}
-
 export interface ImportFinished {
   /** true when new data was imported, rows were pruned, or an error occurred (reload lists). */
   changed: boolean;

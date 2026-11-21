@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "lint": "node --require ./eslint-shim.cjs node_modules/eslint/bin/eslint.js ui/src",
     "tauri": "node scripts/with-target.mjs tauri",
     "test:rust": "node scripts/with-target.mjs cargo test --workspace",
     "lint:rust": "node scripts/with-target.mjs cargo clippy --workspace --all-targets"
@@ -18,11 +20,17 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.12.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "eslint": "^10.15.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.8"
+    "typescript-eslint": "^8.73.0",
+    "typescript6": "npm:typescript@6.0.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   }
 }

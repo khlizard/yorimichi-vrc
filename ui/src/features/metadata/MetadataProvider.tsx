@@ -1,0 +1,35 @@
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import type { MetaTarget } from "../../metadataApi";
+import { MetadataDialog } from "./MetadataDialog";
+
+export interface MetadataOpenOptions {
+  target: MetaTarget;
+  label?: string;
+  /** Initial mode (default "write"). */
+  mode?: "write" | "remove";
+  /** Initial state of "download online-only files too" (the user can still change it). */
+  allowDownload?: boolean;
+}
+
+interface MetadataApi {
+  open(opts: MetadataOpenOptions): void;
+}
+
+const Ctx = createContext<MetadataApi>({ open: () => {} });
+
+export function useMetadataDialog(): MetadataApi {
+  return useContext(Ctx);
+}
+
+export function MetadataProvider({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<{ opts: MetadataOpenOptions; n: number } | null>(null);
+  // Ignore opens while one is already showing.
+  const open = useCallback((opts: MetadataOpenOptions) => setState((p) => p ?? { opts, n: Date.now() }), []);
+  const api = useMemo(() => ({ open }), [open]);
+  return (
+    <Ctx.Provider value={api}>
+      {children}
+      {state && <MetadataDialog key={state.n} opts={state.opts} onClose={() => setState(null)} />}
+    </Ctx.Provider>
+  );
+}
