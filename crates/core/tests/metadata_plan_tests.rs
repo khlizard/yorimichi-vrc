@@ -282,7 +282,103 @@ fn resolve_targets() {
 }
 
 #[test]
+fn resolve_all_skips_missing_rows() {
+    let (fx, ids) = resolve_fixture();
+    fx.conn.execute("UPDATE photos SET missing = 1 WHERE id = ?1", [ids[1].1]).unwrap();
+    let svc = MetadataService::new(&fx.conn);
+    let got = svc.resolve(&MetaTarget::All, 6).unwrap();
+    let want: Vec<i64> = ids.iter().enumerate().filter(|(i, _)| *i != 1).map(|(_, (_, id))| *id).collect();
+    assert_eq!(got, want);
+}
+
+/// Online-only rows are simulated with the DB flag (real placeholders need a sync client).
+fn mark_online(fx: &Fixture, id: i64) {
+    fx.conn.execute("UPDATE photos SET online_only = 1 WHERE id = ?1", [id]).unwrap();
+}
+
+#[test]
+fn plan_write_puts_online_only_candidates_in_the_download_bucket() {
+    let fx = Fixture::new();
+    with_visit(&fx);
+    let png = png_bytes(6, 6);
+    put(&fx, "VRChat_2026-01-10_20-30-00.000.png", &png); // local, eligible
+    put(&fx, "VRChat_2026-01-10_20-31-00.000.png", &png); // online, candidate
+    put(&fx, "VRChat_2026-01-11_10-00-00.000.png", &png); // online, no log
+    put(&fx, "plain.png", &png); // online, estimated time
+    // Online, and the library already read XMP from it before it went online-only.
+    put(&fx, "has_xmp.png", &png_with_chunk(6, 6, &itxt("XML:com.adobe.xmp", false, &vrchat_xmp("W"))));
+    scan(&fx);
+    for n in ["VRChat_2026-01-10_20-31-00.000.png", "VRChat_2026-01-11_10-00-00.000.png", "plain.png", "has_xmp.png"] {
+        mark_online(&fx, id_of(&fx, n));
+    }
+    let svc = MetadataService::new(&fx.conn);
+    let ids = svc.resolve(&MetaTarget::All, 0).unwrap();
+    let plan = svc.plan_write(&ids, OFFSET, now()).unwrap();
+
+    assert_eq!((plan.total, plan.eligible, plan.online, plan.download), (5, 1, 4, 1));
+    assert_eq!(plan.download_ids, vec![id_of(&fx, "VRChat_2026-01-10_20-31-00.000.png")]);
+    assert_eq!(plan.download_bytes, png.len() as i64);
+    let counts: Vec<_> = plan.skipped.iter().map(|s| (s.reason, s.count)).collect();
+    assert_eq!(
+        counts,
+        vec![(SkipReason::HasMetadata, 1), (SkipReason::NoLog, 1), (SkipReason::EstimatedTime, 1)]
+    );
+    let json = serde_json::to_value(&plan).unwrap();
+    assert_eq!((json["online"].as_u64(), json["download"].as_u64()), (Some(4), Some(1)));
+    assert_eq!(json["downloadBytes"].as_i64(), Some(png.len() as i64));
+}
+
+#[test]
+fn apply_write_downloading_writes_and_records_files_flagged_online() {
+    let fx = Fixture::new();
+    with_visit(&fx);
+    let png = png_bytes(8, 8);
+    let p = put(&fx, "VRChat_2026-01-10_20-31-00.000.png", &png);
+    let q = put(&fx, "VRChat_2026-01-10_20-32-00.000.png", &png_with_chunk(8, 8, &itxt("XML:com.adobe.xmp", false, &vrchat_xmp("W"))));
+    scan(&fx);
+    let (a, b) = (id_of(&fx, "VRChat_2026-01-10_20-31-00.000.png"), id_of(&fx, "VRChat_2026-01-10_20-32-00.000.png"));
+    // `b` went online-only before its XMP was ever read.
+    fx.conn.execute("UPDATE photos SET xmp_world_id = NULL, xmp_author_id = NULL, time_source = 'name' WHERE id = ?1", [b]).unwrap();
+    mark_online(&fx, a);
+    mark_online(&fx, b);
+    let svc = MetadataService::new(&fx.conn);
+    let before_q = fs::read(&q).unwrap();
+
+    // The plain write refuses; the downloading one writes (the files here are not placeholders,
+    // so nothing is downloaded).
+    assert_eq!(svc.apply_write(a, OFFSET, now()).unwrap(), MetaOutcome::Skipped(SkipReason::OnlineOnly));
+    let r = svc.apply_write_downloading(a, OFFSET, now()).unwrap();
+    assert_eq!(r.outcome, MetaOutcome::Done);
+    assert!(!r.downloaded);
+    assert_ne!(fs::read(&p).unwrap(), png);
+    let (online, world): (bool, Option<String>) = fx
+        .conn
+        .query_row("SELECT online_only, xmp_world_id FROM photos WHERE id = ?1", [a], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap();
+    assert_eq!((online, world.as_deref()), (false, Some(WRLD)));
+
+    // Already has XMP once read: untouched, and the library now knows it.
+    let r = svc.apply_write_downloading(b, OFFSET, now()).unwrap();
+    assert_eq!(r.outcome, MetaOutcome::Skipped(SkipReason::HasMetadata));
+    assert_eq!(fs::read(&q).unwrap(), before_q);
+    mark_online(&fx, b);
+    let plan = svc.plan_write(&[b], OFFSET, now()).unwrap();
+    assert_eq!((plan.download, plan.skipped[0].reason), (0, SkipReason::HasMetadata));
+
+    // Not a candidate without its content (no log): skipped before any read.
+    let c = {
+        put(&fx, "VRChat_2026-01-11_10-00-00.000.png", &png);
+        scan(&fx);
+        id_of(&fx, "VRChat_2026-01-11_10-00-00.000.png")
+    };
+    mark_online(&fx, c);
+    assert_eq!(svc.apply_write_downloading(c, OFFSET, now()).unwrap().outcome, MetaOutcome::Skipped(SkipReason::NoLog));
+}
+
+#[test]
 fn target_deserializes_from_camel_case_json() {
+    let t: MetaTarget = serde_json::from_str(r#"{"kind":"all"}"#).unwrap();
+    assert!(matches!(t, MetaTarget::All));
     let t: MetaTarget = serde_json::from_str(r#"{"kind":"album","albumId":3}"#).unwrap();
     assert!(matches!(t, MetaTarget::Album { album_id: 3 }));
     let t: MetaTarget = serde_json::from_str(r#"{"kind":"range","from":"2026-01-01","to":"2026-01-31"}"#).unwrap();

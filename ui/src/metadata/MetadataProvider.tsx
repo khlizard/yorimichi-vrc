@@ -6,6 +6,8 @@ export interface MetadataOpenOptions {
   /** Omit to let the user choose a date range (File menu). */
   target?: MetaTarget;
   label?: string;
+  /** Initial state of "download online-only files too" (the user can still change it). */
+  allowDownload?: boolean;
 }
 
 interface MetadataApi {

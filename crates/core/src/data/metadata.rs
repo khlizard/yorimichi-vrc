@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::db;
 use super::query::query_rows;
+use crate::photos::cloud::hydrate;
 use crate::photos::{
     is_online_only, refresh_file, remove_our_xmp_from_file, write_xmp_to_file, xmp_presence, XmpFields, XmpPresence,
 };
@@ -28,6 +29,8 @@ pub enum MetaTarget {
     Day { day: NaiveDate },
     Album { album_id: i64 },
     Range { from: NaiveDate, to: NaiveDate },
+    /// Every photo in the library that is not flagged missing.
+    All,
 }
 
 /// Why a photo is not eligible. Declaration order is the order used in plans.
@@ -85,6 +88,15 @@ pub struct MetaPlan {
     pub skipped: Vec<SkipCount>,
     /// First eligible photo of a write plan (`None` for remove plans).
     pub example: Option<MetaExample>,
+    /// Write plans: online-only photos in the target. Each is either in `download_ids` or
+    /// counted in `skipped` by a reason known without reading it.
+    pub online: usize,
+    /// Write plans: online-only photos that pass every check possible without the content. They
+    /// are only written when the run is allowed to download them (they may still turn out to
+    /// already have metadata).
+    pub download: usize,
+    pub download_ids: Vec<i64>,
+    pub download_bytes: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -95,6 +107,14 @@ pub enum MetaOutcome {
     Failed(String),
 }
 
+/// Result of [`MetadataService::apply_write_downloading`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DownloadOutcome {
+    pub outcome: MetaOutcome,
+    /// The file was an online-only placeholder and was downloaded (it stays local).
+    pub downloaded: bool,
+}
+
 type Verdict<T> = std::result::Result<T, SkipReason>;
 
 struct PhotoRef {
@@ -103,6 +123,9 @@ struct PhotoRef {
     taken_at: String,
     time_source: String,
     online_only: bool,
+    file_size: i64,
+    /// The library already read XMP from this file at some point.
+    xmp_known: bool,
 }
 
 pub struct MetadataService<'a> {
@@ -162,6 +185,9 @@ impl<'a> MetadataService<'a> {
                 &[("@a", album_id)],
                 |r| r.get(0),
             )?),
+            MetaTarget::All => {
+                Ok(query_rows(self.conn, "SELECT id FROM photos WHERE missing = 0 ORDER BY taken_at, id", &[], |r| r.get(0))?)
+            }
         }
     }
 
@@ -169,7 +195,9 @@ impl<'a> MetadataService<'a> {
         Ok(self
             .conn
             .query_row(
-                "SELECT path, file_name, taken_at, time_source, online_only, missing FROM photos WHERE id = ?1",
+                r"SELECT path, file_name, taken_at, time_source, online_only, missing, file_size,
+                         time_source = 'xmp' OR xmp_world_id IS NOT NULL OR xmp_author_id IS NOT NULL
+                  FROM photos WHERE id = ?1",
                 [id],
                 |r| {
                     Ok((
@@ -179,6 +207,8 @@ impl<'a> MetadataService<'a> {
                             taken_at: r.get(2)?,
                             time_source: r.get(3)?,
                             online_only: r.get(4)?,
+                            file_size: r.get(6)?,
+                            xmp_known: r.get(7)?,
                         },
                         r.get::<_, bool>(5)?,
                     ))
@@ -187,19 +217,26 @@ impl<'a> MetadataService<'a> {
             .optional()?)
     }
 
-    /// Shared first checks: row present and not missing, file on disk, not online-only. Only file
-    /// attributes are looked at, never the content.
-    fn probe(&self, id: i64) -> Result<Verdict<(PhotoRef, Metadata)>> {
+    /// Row present and not missing, file on disk. Only file attributes are looked at.
+    fn locate(&self, id: i64) -> Result<Verdict<(PhotoRef, Metadata)>> {
         let Some((row, missing)) = self.photo_ref(id)? else {
             return Ok(Err(SkipReason::Missing));
         };
         if missing {
             return Ok(Err(SkipReason::Missing));
         }
-        let md = match std::fs::metadata(&row.path) {
-            Ok(md) => md,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Err(SkipReason::Missing)),
-            Err(_) => return Ok(Err(SkipReason::Unreadable)),
+        match std::fs::metadata(&row.path) {
+            Ok(md) => Ok(Ok((row, md))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Err(SkipReason::Missing)),
+            Err(_) => Ok(Err(SkipReason::Unreadable)),
+        }
+    }
+
+    /// [`Self::locate`], and the file must not be online-only. Never reads the content.
+    fn probe(&self, id: i64) -> Result<Verdict<(PhotoRef, Metadata)>> {
+        let (row, md) = match self.locate(id)? {
+            Ok(x) => x,
+            Err(r) => return Ok(Err(r)),
         };
         if row.online_only || is_online_only(&md) {
             return Ok(Err(SkipReason::OnlineOnly));
@@ -218,6 +255,19 @@ impl<'a> MetadataService<'a> {
             Ok(x) => x,
             Err(r) => return Ok(Err(r)),
         };
+        self.write_fields(row, &md, true, utc_offset_minutes, now)
+    }
+
+    /// Checks of [`Self::classify_write`] after the location checks. With `read_content` false
+    /// (online-only files) the file's XMP is judged only by what the library already knows.
+    fn write_fields(
+        &self,
+        row: PhotoRef,
+        md: &Metadata,
+        read_content: bool,
+        utc_offset_minutes: i32,
+        now: NaiveDateTime,
+    ) -> Result<Verdict<(String, XmpFields)>> {
         let path = Path::new(&row.path);
         if !has_png_or_jpeg_extension(path) {
             return Ok(Err(SkipReason::UnsupportedFormat));
@@ -228,10 +278,14 @@ impl<'a> MetadataService<'a> {
         if md.permissions().readonly() {
             return Ok(Err(SkipReason::ReadOnly));
         }
-        match xmp_presence(path) {
-            Err(_) => return Ok(Err(SkipReason::Unreadable)),
-            Ok(XmpPresence::None) => {}
-            Ok(_) => return Ok(Err(SkipReason::HasMetadata)),
+        if read_content {
+            match xmp_presence(path) {
+                Err(_) => return Ok(Err(SkipReason::Unreadable)),
+                Ok(XmpPresence::None) => {}
+                Ok(_) => return Ok(Err(SkipReason::HasMetadata)),
+            }
+        } else if row.xmp_known {
+            return Ok(Err(SkipReason::HasMetadata));
         }
         let taken_at = NaiveDateTime::parse_from_str(&row.taken_at, "%Y-%m-%d %H:%M:%S")
             .map_err(|e| Error::Invalid(format!("bad taken_at '{}': {e}", row.taken_at)))?;
@@ -312,10 +366,30 @@ impl<'a> MetadataService<'a> {
         }
     }
 
+    /// Online-only photos are never read here: they go to `download_ids` or are skipped by a
+    /// reason known from the library alone.
     pub fn plan_write(&self, ids: &[i64], utc_offset_minutes: i32, now: NaiveDateTime) -> Result<MetaPlan> {
         let mut plan = PlanBuilder::new(ids.len());
         for &id in ids {
-            match self.classify_write(id, utc_offset_minutes, now)? {
+            let (row, md) = match self.locate(id)? {
+                Ok(x) => x,
+                Err(r) => {
+                    plan.skip(r);
+                    continue;
+                }
+            };
+            let online = row.online_only || is_online_only(&md);
+            let size = row.file_size;
+            let verdict = self.write_fields(row, &md, !online, utc_offset_minutes, now)?;
+            if online {
+                plan.online += 1;
+                match verdict {
+                    Ok(_) => plan.download(id, size),
+                    Err(r) => plan.skip(r),
+                }
+                continue;
+            }
+            match verdict {
                 Ok((path, f)) => {
                     let example = plan.example.is_none().then(|| MetaExample {
                         file_name: Path::new(&path)
@@ -356,6 +430,40 @@ impl<'a> MetadataService<'a> {
         self.finish(&path, write_xmp_to_file(Path::new(&path), &fields).map(|()| true))
     }
 
+    /// Like [`Self::apply_write`], but an online-only file is downloaded first, only if it passes
+    /// every check possible without its content. The downloaded file stays local.
+    pub fn apply_write_downloading(
+        &self,
+        photo_id: i64,
+        utc_offset_minutes: i32,
+        now: NaiveDateTime,
+    ) -> Result<DownloadOutcome> {
+        let plain = |outcome| DownloadOutcome { outcome, downloaded: false };
+        let (row, md) = match self.locate(photo_id)? {
+            Ok(x) => x,
+            Err(r) => return Ok(plain(MetaOutcome::Skipped(r))),
+        };
+        let placeholder = is_online_only(&md);
+        if !row.online_only && !placeholder {
+            return self.apply_write(photo_id, utc_offset_minutes, now).map(plain);
+        }
+        let path = row.path.clone();
+        if let Err(r) = self.write_fields(row, &md, false, utc_offset_minutes, now)? {
+            return Ok(plain(MetaOutcome::Skipped(r)));
+        }
+        if placeholder {
+            if let Err(e) = hydrate(Path::new(&path)) {
+                return Ok(plain(MetaOutcome::Failed(format!("could not download the file: {e}"))));
+            }
+        }
+        // Record the now-local file (its XMP, if any) before deciding; `apply_write` re-checks it.
+        let outcome = match refresh_file(self.conn, Path::new(&path)) {
+            Ok(_) => self.apply_write(photo_id, utc_offset_minutes, now)?,
+            Err(e) => MetaOutcome::Failed(format!("the library could not be refreshed: {e}")),
+        };
+        Ok(DownloadOutcome { outcome, downloaded: placeholder })
+    }
+
     pub fn apply_remove(&self, photo_id: i64) -> Result<MetaOutcome> {
         let path = match self.classify_remove(photo_id)? {
             Ok(p) => p,
@@ -381,11 +489,27 @@ struct PlanBuilder {
     eligible_ids: Vec<i64>,
     counts: [usize; SkipReason::ALL.len()],
     example: Option<MetaExample>,
+    online: usize,
+    download_ids: Vec<i64>,
+    download_bytes: i64,
 }
 
 impl PlanBuilder {
     fn new(total: usize) -> Self {
-        Self { total, eligible_ids: Vec::new(), counts: [0; SkipReason::ALL.len()], example: None }
+        Self {
+            total,
+            eligible_ids: Vec::new(),
+            counts: [0; SkipReason::ALL.len()],
+            example: None,
+            online: 0,
+            download_ids: Vec::new(),
+            download_bytes: 0,
+        }
+    }
+
+    fn download(&mut self, id: i64, size: i64) {
+        self.download_ids.push(id);
+        self.download_bytes += size.max(0);
     }
 
     fn eligible(&mut self, id: i64, example: Option<MetaExample>) {
@@ -410,6 +534,10 @@ impl PlanBuilder {
                 .map(|&r| SkipCount { reason: r, count: self.counts[r as usize] })
                 .collect(),
             example: self.example,
+            online: self.online,
+            download: self.download_ids.len(),
+            download_ids: self.download_ids,
+            download_bytes: self.download_bytes,
         }
     }
 }

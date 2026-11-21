@@ -2,7 +2,10 @@
 //!
 //! Photo files are read-only, with one exception: [`xmp_write`] can insert (and remove again)
 //! a single XMP packet, byte for byte and verified, when the user explicitly asks for it.
+//! Online-only files are never read, except by that same explicit run when the user allows
+//! downloading them ([`cloud`]).
 
+pub mod cloud;
 pub mod meta;
 pub mod scan;
 pub mod thumbs;

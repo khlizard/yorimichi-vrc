@@ -10,7 +10,8 @@ use chrono::{Local, NaiveDateTime};
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use vrclogger_core::data::metadata::{MetaOutcome, MetaPlan, MetaTarget, MetadataService};
+use vrclogger_core::data::metadata::{DownloadOutcome, MetaOutcome, MetaPlan, MetaTarget, MetadataService};
+use vrclogger_core::photos::cloud;
 
 use crate::app::{self, AppState};
 use crate::commands::CmdResult;
@@ -51,6 +52,13 @@ pub struct MetaRunSummary {
     pub failed: usize,
     pub cancelled: bool,
     pub failures: Vec<MetaFailure>,
+    /// Online-only files that were downloaded to be checked (they stay on this PC).
+    pub downloaded: usize,
+    pub downloaded_bytes: i64,
+    /// Downloading stopped early: too little free disk space.
+    pub low_disk: bool,
+    /// Downloading stopped early: several downloads in a row failed.
+    pub download_stopped: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -59,7 +67,13 @@ struct MetaProgress {
     done: usize,
     total: usize,
     file_name: String,
+    downloading: bool,
 }
+
+/// Free space kept on the photo drive while downloading (besides the file itself).
+const DISK_RESERVE: u64 = 2 << 30;
+/// Downloading stops after this many failures in a row (sync client stopped, offline, blocked).
+const MAX_DOWNLOAD_FAILURES_IN_A_ROW: usize = 5;
 
 /// Status line shown after a run.
 fn summary_status(mode: Mode, s: &MetaRunSummary) -> String {
@@ -69,6 +83,21 @@ fn summary_status(mode: Mode, s: &MetaRunSummary) -> String {
     };
     let cancelled = if s.cancelled { "（中止しました）" } else { "" };
     format!("メタデータを{verb}: {} 枚（対象外 {} / 失敗 {}）{cancelled}", s.done, s.skipped, s.failed)
+}
+
+impl MetaRunSummary {
+    fn count(&mut self, outcome: MetaOutcome, file_name: String) {
+        match outcome {
+            MetaOutcome::Done => self.done += 1,
+            MetaOutcome::Skipped(_) => self.skipped += 1,
+            MetaOutcome::Failed(message) => {
+                self.failed += 1;
+                if self.failures.len() < MAX_FAILURES {
+                    self.failures.push(MetaFailure { file_name, message });
+                }
+            }
+        }
+    }
 }
 
 /// The UTC offset of the machine's local zone, in minutes. Core takes one offset per call and
@@ -114,9 +143,18 @@ pub fn metadata_cancel(state: State<'_, AppState>) {
     state.metadata_cancel.store(true, Ordering::SeqCst);
 }
 
+/// `allow_download`: also process online-only candidates (write only) by downloading them first.
+/// Downloaded files stay on this PC.
 #[tauri::command]
-pub async fn metadata_run(app: AppHandle, state: State<'_, AppState>, target: MetaTarget, mode: String) -> CmdResult<MetaRunSummary> {
+pub async fn metadata_run(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    target: MetaTarget,
+    mode: String,
+    allow_download: Option<bool>,
+) -> CmdResult<MetaRunSummary> {
     let mode = Mode::parse(&mode)?;
+    let allow_download = allow_download.unwrap_or(false) && mode == Mode::Write;
     if !app::try_begin(&app) {
         return Err(BUSY_PLAN.to_string());
     }
@@ -127,7 +165,8 @@ pub async fn metadata_run(app: AppHandle, state: State<'_, AppState>, target: Me
         Mode::Remove => "メタデータを取り除き中…",
     });
     let handle = app.clone();
-    let r = tauri::async_runtime::spawn_blocking(move || run_blocking(&handle, &db_path, hour, &target, mode)).await;
+    let r = tauri::async_runtime::spawn_blocking(move || run_blocking(&handle, &db_path, hour, &target, mode, allow_download))
+        .await;
     app::release_importing(&app);
     match r {
         Ok(Ok(sum)) => {
@@ -146,52 +185,87 @@ pub async fn metadata_run(app: AppHandle, state: State<'_, AppState>, target: Me
     }
 }
 
-fn run_blocking(app: &AppHandle, db_path: &std::path::Path, hour: u32, target: &MetaTarget, mode: Mode) -> Result<MetaRunSummary, String> {
+fn file_row(conn: &rusqlite::Connection, id: i64) -> Result<(String, String, i64), String> {
+    conn.query_row("SELECT file_name, path, file_size FROM photos WHERE id = ?1", [id], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    })
+    .optional()
+    .map_err(|e| e.to_string())
+    .map(Option::unwrap_or_default)
+}
+
+fn run_blocking(
+    app: &AppHandle,
+    db_path: &std::path::Path,
+    hour: u32,
+    target: &MetaTarget,
+    mode: Mode,
+    allow_download: bool,
+) -> Result<MetaRunSummary, String> {
     let conn = app::open_db(db_path).map_err(|e| e.to_string())?;
     let svc = MetadataService::new(&conn);
     let ids = svc.resolve(target, hour).map_err(|e| e.to_string())?;
     let now = Local::now().naive_local();
     let plan = make_plan(&svc, &ids, mode, now).map_err(|e| e.to_string())?;
     let offset = local_offset_minutes();
-    let total = plan.eligible;
+    let downloads: &[i64] = if allow_download { &plan.download_ids } else { &[] };
+    let total = plan.eligible + downloads.len();
     let cancel = &app.state::<AppState>().metadata_cancel;
 
-    let mut sum = MetaRunSummary { skipped: plan.total - plan.eligible, ..Default::default() };
+    let mut sum = MetaRunSummary { skipped: plan.total - plan.eligible - downloads.len(), ..Default::default() };
+    let initially_skipped = sum.skipped;
     let mut last_emit: Option<Instant> = None;
+    let mut emit = |done: usize, file_name: &str, downloading: bool, force: bool| {
+        if force || downloading || last_emit.is_none_or(|t| t.elapsed() >= PROGRESS_INTERVAL) {
+            last_emit = Some(Instant::now());
+            let _ = app.emit("metadata-progress", MetaProgress { done, total, file_name: file_name.to_string(), downloading });
+        }
+    };
+
     for (i, &id) in plan.eligible_ids.iter().enumerate() {
         if cancel.load(Ordering::SeqCst) {
             sum.cancelled = true;
             break;
         }
-        let file_name: String = conn
-            .query_row("SELECT file_name FROM photos WHERE id = ?1", [id], |r| r.get(0))
-            .optional()
-            .map_err(|e| e.to_string())?
-            .unwrap_or_default();
-        if last_emit.is_none_or(|t| t.elapsed() >= PROGRESS_INTERVAL) {
-            last_emit = Some(Instant::now());
-            let _ = app.emit("metadata-progress", MetaProgress { done: i, total, file_name: file_name.clone() });
-        }
+        let (file_name, _, _) = file_row(&conn, id)?;
+        emit(i, &file_name, false, false);
         let outcome = match mode {
             Mode::Write => svc.apply_write(id, offset, now),
             Mode::Remove => svc.apply_remove(id),
         }
         .unwrap_or_else(|e| MetaOutcome::Failed(e.to_string()));
-        match outcome {
-            MetaOutcome::Done => sum.done += 1,
-            MetaOutcome::Skipped(_) => sum.skipped += 1,
-            MetaOutcome::Failed(message) => {
-                sum.failed += 1;
-                if sum.failures.len() < MAX_FAILURES {
-                    sum.failures.push(MetaFailure { file_name, message });
-                }
-            }
+        sum.count(outcome, file_name);
+    }
+
+    // Online-only candidates, one at a time: download, check, write. They stay local afterwards.
+    let mut failures_in_a_row = 0;
+    for (i, &id) in downloads.iter().enumerate() {
+        if sum.cancelled || cancel.load(Ordering::SeqCst) {
+            sum.cancelled = true;
+            break;
+        }
+        let (file_name, path, size) = file_row(&conn, id)?;
+        let free = cloud::available_bytes(std::path::Path::new(&path));
+        if free.is_some_and(|f| f < size.max(0) as u64 + DISK_RESERVE) {
+            sum.low_disk = true;
+            break;
+        }
+        emit(plan.eligible + i, &file_name, true, false);
+        let r = svc
+            .apply_write_downloading(id, offset, now)
+            .unwrap_or_else(|e| DownloadOutcome { outcome: MetaOutcome::Failed(e.to_string()), downloaded: false });
+        if r.downloaded {
+            sum.downloaded += 1;
+            sum.downloaded_bytes += size.max(0);
+        }
+        failures_in_a_row = if matches!(r.outcome, MetaOutcome::Failed(_)) { failures_in_a_row + 1 } else { 0 };
+        sum.count(r.outcome, file_name);
+        if failures_in_a_row >= MAX_DOWNLOAD_FAILURES_IN_A_ROW {
+            sum.download_stopped = true;
+            break;
         }
     }
-    let _ = app.emit(
-        "metadata-progress",
-        MetaProgress { done: sum.done + sum.failed + (sum.skipped - (plan.total - plan.eligible)), total, file_name: String::new() },
-    );
+    emit(sum.done + sum.failed + (sum.skipped - initially_skipped), "", false, true);
     Ok(sum)
 }
 

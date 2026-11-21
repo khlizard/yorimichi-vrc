@@ -49,6 +49,12 @@ struct Existing {
     online_only: bool,
 }
 
+/// A local file became an online-only placeholder (size and mtime unchanged). Its row keeps
+/// what was read from the content (dimensions, XMP), which can no longer be read without a download.
+fn went_online_only(was_online: bool, is_online: bool) -> bool {
+    !was_online && is_online
+}
+
 fn has_photo_extension(path: &Path) -> bool {
     path.extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
@@ -162,6 +168,7 @@ pub fn scan_folders(
     let mut unavailable: Vec<&PathBuf> = Vec::new();
     {
         let mut upsert = tx.prepare(UPSERT_SQL)?;
+        let mut set_online = tx.prepare("UPDATE photos SET online_only = 1 WHERE id = ?1")?;
 
         for folder in folders {
             // An unreadable root (e.g. unplugged drive) must not flag its photos as missing.
@@ -185,9 +192,16 @@ pub fn scan_folders(
                 let prev = existing.get(&path_str);
                 if let Some(e) = prev {
                     seen.insert(e.id);
-                    if !e.missing && e.size == stamp.size && e.mtime == stamp.mtime && e.online_only == stamp.online
-                    {
-                        continue;
+                    if !e.missing && e.size == stamp.size && e.mtime == stamp.mtime {
+                        if e.online_only == stamp.online {
+                            continue;
+                        }
+                        if went_online_only(e.online_only, stamp.online) {
+                            // Same content, only the local copy was freed: keep what was read from it.
+                            set_online.execute(params![e.id])?;
+                            summary.updated += 1;
+                            continue;
+                        }
                     }
                 }
                 let id = upsert_photo(&mut upsert, entry.path(), &stamp)?;

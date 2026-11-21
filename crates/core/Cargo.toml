@@ -19,5 +19,8 @@ thiserror = "2.0.21"
 walkdir = "2"
 jpeg-decoder = "0.3"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 tempfile = "3.27.0"

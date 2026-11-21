@@ -22,6 +22,7 @@ use settings::{Settings, ThemeSetting};
 const ID_MENU_EXPORT: &str = "menu_export";
 const ID_MENU_BACKUP: &str = "menu_backup";
 const ID_MENU_METADATA: &str = "menu_metadata";
+const ID_MENU_METADATA_ALL: &str = "menu_metadata_all";
 const ID_MENU_SETTINGS: &str = "menu_settings";
 const ID_MENU_UPDATE: &str = "menu_update";
 const ID_MENU_EXIT: &str = "menu_exit";
@@ -42,10 +43,11 @@ fn handle_menu(app: &AppHandle, id: &str) {
         ID_MENU_BACKUP => {
             tauri::async_runtime::spawn(maintenance::backup_now(app.clone(), false));
         }
-        ID_MENU_METADATA => {
+        ID_MENU_METADATA | ID_MENU_METADATA_ALL => {
             // Only opens the confirmation dialog; nothing is written until the user confirms there.
             app::show_main(app);
-            let _ = app.emit("open-metadata-dialog", ());
+            let kind = if id == ID_MENU_METADATA_ALL { "all" } else { "range" };
+            let _ = app.emit("open-metadata-dialog", kind);
         }
         ID_MENU_SETTINGS | ID_TRAY_SETTINGS => app::open_settings(app),
         ID_MENU_UPDATE => {
@@ -71,8 +73,14 @@ fn build_window_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let metadata = MenuItem::with_id(app, ID_MENU_METADATA, "写真にメタデータを書き込む…", true, None::<&str>)?;
-    let file =
-        Submenu::with_items(app, "ファイル(&F)", true, &[&export, &backup, &metadata, &sep1, &settings, &sep2, &exit])?;
+    let metadata_all =
+        MenuItem::with_id(app, ID_MENU_METADATA_ALL, "書き込めるすべての写真にメタデータを書き込む…", true, None::<&str>)?;
+    let file = Submenu::with_items(
+        app,
+        "ファイル(&F)",
+        true,
+        &[&export, &backup, &metadata, &metadata_all, &sep1, &settings, &sep2, &exit],
+    )?;
     let current = app.state::<AppState>().settings.lock().unwrap().theme;
     let check = |id: &str, text: &str, t: ThemeSetting| CheckMenuItem::with_id(app, id, text, true, current == t, None::<&str>);
     let theme_items = vec![

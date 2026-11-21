@@ -172,7 +172,9 @@ function Main() {
       }),
     );
     unlisten.push(onImporting((b) => setImporting(b)));
-    unlisten.push(onOpenMetadataDialog(() => openMetadataRef.current({})));
+    unlisten.push(onOpenMetadataDialog((kind) =>
+        openMetadataRef.current(kind === "all" ? { target: { kind: "all" }, label: "書き込めるすべての写真", allowDownload: true } : {}),
+      ));
     unlisten.push(
       onImportFinished(({ changed, automatic }) => {
         if (changed && !automatic) {

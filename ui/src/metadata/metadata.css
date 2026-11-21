@@ -78,3 +78,16 @@
   border: 1px solid var(--line);
   word-break: break-all;
 }
+.md-download {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.md-download label {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.md-download input {
+  margin-top: 3px;
+}

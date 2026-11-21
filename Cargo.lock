@@ -4966,6 +4966,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "walkdir",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

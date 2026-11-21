@@ -17,6 +17,8 @@ import type { MetadataOpenOptions } from "./MetadataProvider";
 import "./metadata.css";
 
 const nf = (n: number) => n.toLocaleString("ja-JP");
+const size = (bytes: number) =>
+  bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6)).toLocaleString("ja-JP")} MB`;
 
 const SKIP_LABELS: Record<SkipReason, string> = {
   hasMetadata: "すでにメタデータがある",
@@ -69,6 +71,7 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
   const [progress, setProgress] = useState<MetaProgress | null>(null);
   const [summary, setSummary] = useState<{ s: MetaRunSummary; mode: MetaMode } | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [allowDownload, setAllowDownload] = useState(opts.allowDownload ?? false);
   const ref = useRef<HTMLDivElement>(null);
   const gen = useRef(0);
   const running = step === "running";
@@ -137,13 +140,16 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
     if (target && (step === "plan" || step === "planning")) void doPlan(target, m, step === "plan" ? { step: "plan", mode, plan } : fixed ? null : { step: "target", mode, plan: null });
   };
 
+  const withDownload = mode === "write" && allowDownload && (plan?.download ?? 0) > 0;
+  const runCount = plan ? plan.eligible + (withDownload ? plan.download : 0) : 0;
+
   const run = async () => {
-    if (!target || !plan || plan.eligible === 0) return;
-    setProgress({ done: 0, total: plan.eligible, fileName: "" });
+    if (!target || !plan || runCount === 0) return;
+    setProgress({ done: 0, total: runCount, fileName: "", downloading: false });
     setCancelling(false);
     setStep("running");
     try {
-      const s = await metadataRun(target, mode);
+      const s = await metadataRun(target, mode, withDownload);
       setSummary({ s, mode });
       setStep("result");
     } catch (e) {
@@ -242,6 +248,24 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
                     ))}
                 </ul>
               )}
+              {mode === "write" && plan.download > 0 && (
+                <div className="md-download">
+                  <label>
+                    <input type="checkbox" checked={allowDownload} onChange={(e) => setAllowDownload(e.target.checked)} />
+                    オンライン専用の写真もダウンロードして確認する（<span className="md-num">{nf(plan.download)}</span> 枚、
+                    {size(plan.downloadBytes)}）
+                  </label>
+                  <div className="md-muted">
+                    1 枚ずつダウンロードし、メタデータが無ければ書き込みます。ダウンロードしたファイルはこの PC に残ります。不要になったら
+                    Dropbox のメニューの「オンライン専用にする」で戻してください。
+                  </div>
+                </div>
+              )}
+              {mode === "write" && plan.online > 0 && plan.download === 0 && (
+                <div className="md-muted">
+                  オンライン専用の写真 {nf(plan.online)} 枚に、ダウンロードすれば書き込めるものはありません（上の理由で対象外）。
+                </div>
+              )}
               {mode === "write" && ex && (
                 <>
                   <div className="md-sub">書き込む内容の例</div>
@@ -276,7 +300,7 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
                 </span>
               </div>
               <div className="ellipsis md-muted" title={progress.fileName}>
-                {progress.fileName || " "}
+                {progress.fileName ? `${progress.downloading ? "ダウンロードして確認中: " : ""}${progress.fileName}` : " "}
               </div>
               <progress className="md-progress" max={progress.total} value={progress.done} />
             </>
@@ -298,6 +322,22 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
                 </div>
               )}
               {summary.s.cancelled && <div className="md-muted">途中で中止しました。</div>}
+              {summary.s.downloaded > 0 && (
+                <div className="md-muted">
+                  オンライン専用の写真を {nf(summary.s.downloaded)} 枚（{size(summary.s.downloadedBytes)}）ダウンロードして確認しました。
+                  これらはこの PC に残っています。不要なら Dropbox のメニューの「オンライン専用にする」で戻してください。
+                </div>
+              )}
+              {summary.s.lowDisk && (
+                <div className="md-warn" role="alert">
+                  ディスクの空きが少なくなったため、ダウンロードを途中で止めました。
+                </div>
+              )}
+              {summary.s.downloadStopped && (
+                <div className="md-warn" role="alert">
+                  ダウンロードの失敗が続いたため、途中で止めました。Dropbox などが動いているか確認してください。
+                </div>
+              )}
               {summary.s.failures.length > 0 && (
                 <ul className="md-failures" tabIndex={0} aria-label="失敗したファイル">
                   {summary.s.failures.map((f, i) => (
@@ -331,10 +371,14 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
               <button
                 type="button"
                 className="button-accent"
-                disabled={step !== "plan" || !plan || plan.eligible === 0}
+                disabled={step !== "plan" || !plan || runCount === 0}
                 onClick={() => void run()}
               >
-                {plan ? `${nf(plan.eligible)} 枚${mode === "write" ? "に書き込む" : "から取り除く"}` : mode === "write" ? "書き込む" : "取り除く"}
+                {plan
+                  ? `${withDownload ? "最大 " : ""}${nf(runCount)} 枚${mode === "write" ? "に書き込む" : "から取り除く"}`
+                  : mode === "write"
+                    ? "書き込む"
+                    : "取り除く"}
               </button>
               <button type="button" onClick={close}>
                 キャンセル
