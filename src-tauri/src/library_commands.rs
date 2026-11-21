@@ -1,7 +1,5 @@
 //! Tauri commands for the library features (tags/memos, worlds, timeline, stats, albums, story export, links).
 
-use std::path::PathBuf;
-
 use chrono::{Local, NaiveDate, NaiveDateTime};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -14,7 +12,6 @@ use vrclogger_core::export::story::{self, ExportSummary, StoryOptions};
 
 use crate::app::{self, AppState};
 use crate::commands::{parse_date, CmdResult};
-use crate::settings::settings_dir;
 
 const NO_DB: &str = "データベースを開けません。設定の DB パスを確認してください。";
 
@@ -124,11 +121,6 @@ pub async fn worlds(
 }
 
 #[tauri::command]
-pub async fn world(state: State<'_, AppState>, id: i64) -> CmdResult<Option<WorldRow>> {
-    with_library(&state, |l| l.world(id))
-}
-
-#[tauri::command]
 pub async fn set_world_note(
     state: State<'_, AppState>,
     world_ref_id: i64,
@@ -202,11 +194,6 @@ pub async fn years(state: State<'_, AppState>) -> CmdResult<Vec<i32>> {
 #[tauri::command]
 pub async fn albums(state: State<'_, AppState>) -> CmdResult<Vec<AlbumRow>> {
     with_library(&state, |l| l.albums())
-}
-
-#[tauri::command]
-pub async fn album(state: State<'_, AppState>, id: i64) -> CmdResult<Option<AlbumRow>> {
-    with_library(&state, |l| l.album(id))
 }
 
 #[tauri::command]
@@ -318,13 +305,7 @@ enum StoryTarget {
 async fn export_story(app: AppHandle, target: StoryTarget, file_name: String, include_players: bool) {
     let (db_path, start_dir, hour) = {
         let s = app.state::<AppState>().settings.lock().unwrap().clone();
-        let dir = s
-            .last_viewer_export_folder
-            .as_deref()
-            .map(PathBuf::from)
-            .filter(|p| p.is_dir())
-            .unwrap_or_else(settings_dir);
-        (s.resolved_db_path(), dir, s.day_start_hour)
+        (s.resolved_db_path(), app::export_start_dir(&s), s.day_start_hour)
     };
     let app_dlg = app.clone();
     let picked = tauri::async_runtime::spawn_blocking(move || {

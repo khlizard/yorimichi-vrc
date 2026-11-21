@@ -1,7 +1,8 @@
 {
   "name": "vrclogger-dev",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,8 +14,6 @@
   "dependencies": {
     "@tanstack/react-virtual": "^3.14.26",
     "@tauri-apps/api": "^2.12.5",
-    "@tauri-apps/plugin-dialog": "^2.8.4",
-    "@tauri-apps/plugin-opener": "^2.7.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

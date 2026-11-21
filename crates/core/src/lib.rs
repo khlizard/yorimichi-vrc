@@ -1,9 +1,14 @@
-//! VrcLogger core: a Tauri-independent port of the C# `VrcLogger.Core` library.
+//! VrcLogger core: the Tauri-independent library behind the app.
 //!
 //! * [`parsing`] turns VRChat `output_log_*.txt` text into structured events.
 //! * [`data`] owns the SQLite schema ([`data::db`]), the diff importer
 //!   ([`data::import`]), the read side ([`data::query`]) and its row types ([`data::dtos`]).
-//! * [`export`] writes the self-contained HTML viewer for other PCs.
+//!   It also holds the user-written library ([`data::library`]: player memos and tags, world
+//!   notes, albums, timeline and stats views) and the photo queries and metadata planning.
+//! * [`photos`] scans photo folders, reads capture time and VRChat XMP, makes thumbnails and
+//!   writes metadata into photos on request.
+//! * [`export`] writes the self-contained HTML viewer for other PCs and the shareable
+//!   album / day story pages.
 //!
 //! # Errors
 //! Every fallible public function returns [`Result`], i.e. `Result<T, Error>`.

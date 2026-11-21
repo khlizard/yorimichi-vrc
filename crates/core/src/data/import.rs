@@ -1,4 +1,4 @@
-//! Differential log import, pruning and backfill. Port of `ImportService.cs`.
+//! Differential log import, pruning and backfill.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ use super::db;
 use crate::parsing::{self, ParseOptions, ParseResult, ParsedUrlEvent};
 use crate::Result;
 
-/// Optional progress callback receiving the same (Japanese) messages as the C# app.
+/// Optional progress callback receiving human-readable (Japanese) status messages.
 pub type Progress<'a> = Option<&'a dyn Fn(&str)>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

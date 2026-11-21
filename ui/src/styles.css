@@ -534,13 +534,6 @@ a.link {
   align-items: stretch;
   gap: 6px;
 }
-.section-title {
-  font-weight: bold;
-  margin-top: 12px;
-}
-.section-title:first-child {
-  margin-top: 0;
-}
 .folder-list {
   list-style: none;
   margin: 0;
@@ -562,9 +555,6 @@ a.link {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.save-row {
-  margin-top: 12px;
 }
 .save-status {
   color: var(--ok);

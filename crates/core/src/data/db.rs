@@ -1,5 +1,5 @@
-//! SQLite connection setup and schema. Port of `Db.cs`; the SQL is identical so the
-//! `vrclog.db` created by the C# app opens without migration.
+//! SQLite connection setup and schema. The schema is unchanged from 0.1.x, so a
+//! `vrclog.db` created by a 0.1.x version opens without migration.
 
 use std::path::Path;
 use std::time::Duration;

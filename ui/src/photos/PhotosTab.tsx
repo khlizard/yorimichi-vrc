@@ -16,10 +16,10 @@ import { errText, type TabHandle } from "../components/util";
 import { useNav } from "../nav";
 import { Lightbox } from "./Lightbox";
 import { PhotoGrid, type GridSize, type PhotoGridHandle } from "./PhotoGrid";
-import type { PhotoFilter } from "./nav";
+import type { PhotoFilter } from "../nav";
 import "./photos.css";
 
-export type { PhotoFilter } from "./nav";
+export type { PhotoFilter } from "../nav";
 
 export interface PhotosHandle extends TabHandle {
   /** Show only the photos of a world / player, with a removable chip. */

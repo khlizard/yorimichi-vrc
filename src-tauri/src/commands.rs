@@ -66,12 +66,6 @@ pub async fn vacuum(app: AppHandle) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub async fn export_viewer(app: AppHandle) -> CmdResult<()> {
-    app::export_viewer(app).await;
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> CmdResult<Settings> {
     Ok(state.settings.lock().unwrap().clone())
 }
@@ -444,11 +438,6 @@ pub async fn photo_detail(state: State<'_, AppState>, id: i64) -> CmdResult<Opti
 #[tauri::command]
 pub async fn set_photo_favorite(state: State<'_, AppState>, id: i64, favorite: bool) -> CmdResult<()> {
     with_photos(&state, |p| p.set_favorite(id, favorite))
-}
-
-#[tauri::command]
-pub async fn photo_count(state: State<'_, AppState>) -> CmdResult<i64> {
-    with_photos(&state, |p| p.count())
 }
 
 fn photo_path_of(state: &AppState, id: i64) -> CmdResult<String> {

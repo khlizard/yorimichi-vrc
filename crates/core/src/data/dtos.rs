@@ -1,8 +1,7 @@
-//! Row types returned by [`super::query::QueryService`]. Port of `Dtos.cs`.
+//! Row types returned by [`super::query::QueryService`].
 //!
-//! All structs serialize to camelCase JSON. Members that were computed getters in C#
-//! (`LastSeenDate`, `Duration`, `Response`) are real, pre-computed fields here so the UI
-//! receives them in the JSON.
+//! All structs serialize to camelCase JSON. Derived values (`LastSeenDate`, `Duration`,
+//! `Response`) are real, pre-computed fields so the UI receives them in the JSON.
 
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};

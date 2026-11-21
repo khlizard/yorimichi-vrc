@@ -10,12 +10,12 @@ fn parse_log(text: &str) -> ParseResult {
 #[test]
 fn parses_basic_visit_with_players() {
     let result = parse_log(&log(r"
-        2026.06.23 21:38:17 {P}User Authenticated: テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
-        2026.06.23 21:38:23 {P}[Behaviour] Entering Room: Sample World
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:91278~private(usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)~region(jp)
-        2026.06.23 21:38:33 {P}[Behaviour] OnPlayerJoined テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
-        2026.06.23 21:40:46 {P}[Behaviour] OnPlayerLeft テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
-        2026.06.23 21:40:46 {P}[Behaviour] OnLeftRoom
+        2026.01.10 20:00:17 {P}User Authenticated: テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
+        2026.01.10 20:00:23 {P}[Behaviour] Entering Room: Sample World
+        2026.01.10 20:00:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:12345~private(usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)~region(jp)
+        2026.01.10 20:00:33 {P}[Behaviour] OnPlayerJoined テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
+        2026.01.10 20:02:46 {P}[Behaviour] OnPlayerLeft テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
+        2026.01.10 20:02:46 {P}[Behaviour] OnLeftRoom
     "));
 
     assert_eq!(result.local_user_id.as_deref(), Some("usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
@@ -24,10 +24,10 @@ fn parses_basic_visit_with_players() {
     let visit = &result.visits[0];
     assert_eq!(visit.world_name, "Sample World");
     assert_eq!(visit.world_id.as_deref(), Some("wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
-    assert!(visit.instance_id.starts_with("91278~private"));
+    assert!(visit.instance_id.starts_with("12345~private"));
     assert!(visit.ended_cleanly);
-    assert_eq!(visit.join_time, dt(2026, 6, 23, 21, 38, 23));
-    assert_eq!(visit.leave_time, dt(2026, 6, 23, 21, 40, 46));
+    assert_eq!(visit.join_time, dt(2026, 1, 10, 20, 0, 23));
+    assert_eq!(visit.leave_time, dt(2026, 1, 10, 20, 2, 46));
     assert_eq!(visit.encounters.len(), 1);
     let enc = &visit.encounters[0];
     assert_eq!(enc.display_name, "テスト／Tester");
@@ -37,8 +37,8 @@ fn parses_basic_visit_with_players() {
 #[test]
 fn player_left_room_line_is_not_a_player_left() {
     let result = parse_log(&log(r"
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:1
-        2026.06.23 21:38:33 {P}[Behaviour] OnPlayerJoined A B (C) (usr_11111111-1111-1111-1111-111111111111)
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:1
+        2026.06.23 20:00:33 {P}[Behaviour] OnPlayerJoined A B (C) (usr_11111111-1111-1111-1111-111111111111)
         2026.06.23 21:49:59 {P}[Behaviour] OnPlayerLeftRoom
         2026.06.23 21:50:00 {P}[Behaviour] OnLeftRoom
     "));
@@ -53,7 +53,7 @@ fn player_left_room_line_is_not_a_player_left() {
 #[test]
 fn continuation_lines_are_skipped() {
     let result = parse_log(&log(r"
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:1
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:1
         2026.06.23 22:08:53 Error      -  HTTP/1.1 404 Not Found
         Cysharp.Threading.Tasks.UnityWebRequestException: HTTP/1.1 404 Not Found
           at VRC.DataModel.Textures.NativeTextureDownloader.DownloadTexture (...)
@@ -69,8 +69,8 @@ fn continuation_lines_are_skipped() {
 #[test]
 fn crash_eof_closes_visit_and_encounters_uncleanly() {
     let result = parse_log(&log(r"
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:1
-        2026.06.23 21:38:33 {P}[Behaviour] OnPlayerJoined X (usr_11111111-1111-1111-1111-111111111111)
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:1
+        2026.06.23 20:00:33 {P}[Behaviour] OnPlayerJoined X (usr_11111111-1111-1111-1111-111111111111)
         2026.06.23 23:00:00 {P}some later line
     "));
 
@@ -142,7 +142,7 @@ fn raw_events_link_to_current_visit() {
 #[test]
 fn parses_communication_notifications_and_skips_group_bulletins() {
     let result = parse_log(&log(r#"
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
         2026.06.23 21:39:00 {P}Received Notification: <Notification from username:Friend, A, sender user id:usr_11111111-1111-1111-1111-111111111111 to usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa of type: invite, id: not_11111111-1111-1111-1111-111111111111, created at: 06/23/2026 12:39:00 UTC, details: {{worldId=wrld_22222222-2222-2222-2222-222222222222:1~region(jp), worldName=Some World}}, type:invite, m seen:False, message: "">
         2026.06.23 21:39:00 {P}Received Notification: <Notification from username:Friend B, sender user id:usr_22222222-2222-2222-2222-222222222222 to usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa of type: boop, id: not_22222222-2222-2222-2222-222222222222, created at: 06/23/2026 12:39:00 UTC, details: {{emojiId=default_heart, emojiVersion=, inventoryItemId=}}, type:boop, m seen:False, message: "Friend B Booped You!">
         2026.06.23 21:39:00 {P}Received Notification: <Notification from username:Friend C, sender user id:usr_22222222-2222-2222-2222-222222222222 to usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa of type: friendRequest, id: frq_33333333-3333-3333-3333-333333333333, created at: 06/23/2026 12:39:00 UTC, details: {{}}, type:friendRequest, m seen:False, message: "">
@@ -186,7 +186,7 @@ fn parses_communication_notifications_and_skips_group_bulletins() {
 #[test]
 fn parses_moderation_events() {
     let result = parse_log(&log(r"
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
         2026.06.23 21:39:00 {P}[ModerationManager] Some One is now Muted
         2026.06.23 21:39:30 {P}[ModerationManager] Some One is no longer Muted
         2026.06.23 21:40:00 {P}[ModerationManager] Bad Actor is now Blocked
@@ -220,14 +220,14 @@ fn parses_moderation_events() {
 #[test]
 fn noise_patterns_are_dropped_from_raw_events_but_udon_output_is_kept() {
     let result = parse_log(&log(r"
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
-        2026.06.23 21:38:30 {P}[Behaviour] Using default gesture mask (hands)
-        2026.06.23 21:38:31 {P}[Behaviour] CacheComponents: ParticleSystems 0, AudioSources 0
-        2026.06.23 21:38:32 {P}Missing button from radio selector group
-        2026.06.23 21:38:33 {P}[EOSManager] EOS Initialized Successfully
-        2026.06.23 21:38:34 {P}MyWorldScript: player entered trigger zone 3
-        2026.06.23 21:38:35 {P}[Udon] custom log line
-        2026.06.23 21:38:36 {P}[Behaviour] Switching Some One to avatar Cool Avatar
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+        2026.06.23 20:00:30 {P}[Behaviour] Using default gesture mask (hands)
+        2026.06.23 20:00:31 {P}[Behaviour] CacheComponents: ParticleSystems 0, AudioSources 0
+        2026.06.23 20:00:32 {P}Missing button from radio selector group
+        2026.06.23 20:00:33 {P}[EOSManager] EOS Initialized Successfully
+        2026.06.23 20:00:34 {P}MyWorldScript: player entered trigger zone 3
+        2026.06.23 20:00:35 {P}[Udon] custom log line
+        2026.06.23 20:00:36 {P}[Behaviour] Switching Some One to avatar Cool Avatar
         2026.06.23 22:00:00 {P}[Behaviour] OnLeftRoom
     "));
 
@@ -249,10 +249,10 @@ fn custom_noise_patterns_override_defaults() {
     let options = ParseOptions::new(["[Udon]", "*trigger zone"]);
     let result = parse(
         &log(r"
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
-        2026.06.23 21:38:30 {P}[Behaviour] Using default gesture mask (hands)
-        2026.06.23 21:38:34 {P}MyWorldScript: player entered trigger zone 3
-        2026.06.23 21:38:35 {P}[Udon] custom log line
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+        2026.06.23 20:00:30 {P}[Behaviour] Using default gesture mask (hands)
+        2026.06.23 20:00:34 {P}MyWorldScript: player entered trigger zone 3
+        2026.06.23 20:00:35 {P}[Udon] custom log line
         2026.06.23 22:00:00 {P}[Behaviour] OnLeftRoom
     "),
         &options,
@@ -268,13 +268,13 @@ fn custom_noise_patterns_override_defaults() {
 #[test]
 fn parses_avatar_switches_and_download_sizes() {
     let result = parse_log(&log(r"
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
-        2026.06.23 21:38:30 {P}[Behaviour] Switching Alice to avatar Dress by Shop
-        2026.06.23 21:38:30 {P}[Behaviour] Switching Bob to avatar Cached One
-        2026.06.23 21:38:30 {P}[AssetBundleDownloadManager] [109] Unpacking Avatar (Cached One by Bob)
-        2026.06.23 21:38:31 {P}[AssetBundleDownloadManager] Starting download of Avatar @ 44 MB, 0 still queued.
-        2026.06.23 21:38:34 {P}[AssetBundleDownloadManager] Download for avatar (Worn:0 Dist:9.03) (44.2 MB) started 0 seconds and completed 3 seconds after queueing.
-        2026.06.23 21:38:34 {P}[AssetBundleDownloadManager] [114] Unpacking Avatar (Dress by Shop by Alice)
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+        2026.06.23 20:00:30 {P}[Behaviour] Switching Alice to avatar Dress by Shop
+        2026.06.23 20:00:30 {P}[Behaviour] Switching Bob to avatar Cached One
+        2026.06.23 20:00:30 {P}[AssetBundleDownloadManager] [109] Unpacking Avatar (Cached One by Bob)
+        2026.06.23 20:00:31 {P}[AssetBundleDownloadManager] Starting download of Avatar @ 44 MB, 0 still queued.
+        2026.06.23 20:00:34 {P}[AssetBundleDownloadManager] Download for avatar (Worn:0 Dist:9.03) (44.2 MB) started 0 seconds and completed 3 seconds after queueing.
+        2026.06.23 20:00:34 {P}[AssetBundleDownloadManager] [114] Unpacking Avatar (Dress by Shop by Alice)
         2026.06.23 21:39:00 {P}[Behaviour] Switching Alice to avatar Dress by Shop
         2026.06.23 21:40:00 {P}[AssetBundleDownloadManager] Download for avatar (Worn:0 Dist:2.00) (10.5 MB) started 0 seconds and completed 1 seconds after queueing.
         2026.06.23 21:40:00 {P}[AssetBundleDownloadManager] [115] Unpacking Avatar (Surprise by Carol)

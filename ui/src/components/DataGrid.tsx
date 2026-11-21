@@ -5,7 +5,7 @@ export interface Column<T> {
   header: string;
   /** Fixed pixel width. */
   width?: number;
-  /** Flex weight (the `*` / `2*` of the WPF grid) when width is not given. */
+  /** Flex weight (relative share of the remaining width) when width is not given. */
   flex?: number;
   align?: "right";
   /** Plain text of the cell; also used as the tooltip. */

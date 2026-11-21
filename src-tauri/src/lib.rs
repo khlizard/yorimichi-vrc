@@ -158,7 +158,6 @@ pub fn run() {
             commands::import_now,
             commands::reimport_all,
             commands::vacuum,
-            commands::export_viewer,
             commands::get_settings,
             commands::save_settings,
             commands::default_noise_patterns,
@@ -188,7 +187,6 @@ pub fn run() {
             commands::photos_for_visit,
             commands::photo_detail,
             commands::set_photo_favorite,
-            commands::photo_count,
             commands::reveal_photo,
             commands::open_photo,
             commands::photo_file_info,
@@ -204,7 +202,6 @@ pub fn run() {
             library_commands::player_marks,
             library_commands::visit_player_badges,
             library_commands::worlds,
-            library_commands::world,
             library_commands::set_world_note,
             library_commands::timeline_day,
             library_commands::activity,
@@ -214,7 +211,6 @@ pub fn run() {
             library_commands::stats,
             library_commands::years,
             library_commands::albums,
-            library_commands::album,
             library_commands::create_album,
             library_commands::update_album,
             library_commands::delete_album,
@@ -246,7 +242,7 @@ pub fn run() {
             if let Err(e) = app::reopen_query_db(&handle) {
                 app::set_status(&handle, format!("データベースを開けません: {e}"));
             } else {
-                // Like the C# MainViewModel ctor: recover avatar switches still present in raw_events.
+                // Recover avatar switches still present in raw_events.
                 let st = handle.state::<AppState>();
                 let guard = st.query.lock().unwrap();
                 if let Some(conn) = guard.as_ref() {

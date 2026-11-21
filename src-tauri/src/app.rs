@@ -258,7 +258,7 @@ pub fn exit_app(app: &AppHandle) {
     app.exit(0);
 }
 
-/// Import (+ hourly prune). Mirrors `MainViewModel.RunImportAsync`.
+/// Import (+ hourly prune).
 pub async fn run_import(app: AppHandle, automatic: bool) {
     if !try_begin(&app) {
         return;
@@ -378,16 +378,20 @@ pub async fn vacuum(app: AppHandle) {
     set_importing(&app, false);
 }
 
+/// Folder the "save HTML" dialogs open in: where the last export went, else Documents.
+pub fn export_start_dir(s: &Settings) -> std::path::PathBuf {
+    s.last_viewer_export_folder
+        .as_deref()
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_dir())
+        .or_else(dirs::document_dir)
+        .unwrap_or_else(settings_dir)
+}
+
 pub async fn export_viewer(app: AppHandle) {
     let (db_path, start_dir) = {
         let s = app.state::<AppState>().settings.lock().unwrap().clone();
-        let dir = s
-            .last_viewer_export_folder
-            .as_deref()
-            .map(std::path::PathBuf::from)
-            .filter(|p| p.is_dir())
-            .unwrap_or_else(settings_dir);
-        (s.resolved_db_path(), dir)
+        (s.resolved_db_path(), export_start_dir(&s))
     };
     let app_dlg = app.clone();
     let picked = tauri::async_runtime::spawn_blocking(move || {

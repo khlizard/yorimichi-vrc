@@ -1,5 +1,11 @@
 import { createContext, useContext, useEffect, useRef } from "react";
-import type { PhotoFilter } from "./photos/nav";
+
+/** Filter for the photos tab. `label` is the bare name (world / player); the chip adds the prefix. */
+export interface PhotoFilter {
+  worldRefId?: number;
+  playerId?: number;
+  label: string;
+}
 
 /** Cross-tab navigation, provided by App. Tabs call these instead of receiving one prop per target. */
 export interface AppNav {

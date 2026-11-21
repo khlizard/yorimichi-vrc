@@ -3,6 +3,9 @@ name = "vrclogger"
 description = "VRChat log viewer"
 edition.workspace = true
 version.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 
 [lib]
 name = "vrclogger_lib"

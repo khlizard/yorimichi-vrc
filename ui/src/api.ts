@@ -244,8 +244,6 @@ export const importNow = () => invoke<void>("import_now");
 /** Marks all files for reimport and runs a manual import. */
 export const reimportAll = () => invoke<void>("reimport_all");
 export const vacuum = () => invoke<void>("vacuum");
-/** Opens the save dialog; cancel does nothing. Result is reported via status events. */
-export const exportViewer = () => invoke<void>("export_viewer");
 
 export const getSettings = () => invoke<Settings>("get_settings");
 /** Returns the save status text, e.g. "保存しました (12:34:56)". */
@@ -340,7 +338,6 @@ export const photosForVisit = (visitId: number) => invoke<PhotoRow[]>("photos_fo
 export const photoDetail = (id: number) => invoke<PhotoDetail | null>("photo_detail", { id });
 export const setPhotoFavorite = (id: number, favorite: boolean) =>
   invoke<void>("set_photo_favorite", { id, favorite });
-export const photoCount = () => invoke<number>("photo_count");
 /** Manual import + photo scan (always scans). */
 export const rescanPhotos = () => invoke<void>("rescan_photos");
 /** Show the file selected in Explorer. */

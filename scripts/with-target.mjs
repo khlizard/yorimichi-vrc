@@ -22,16 +22,17 @@ function projectName() {
 
 const base = process.env.LOCALAPPDATA ?? join(homedir(), ".cache");
 // 後に書いた置き換えが優先される。プロジェクトのフォルダは「.」、それ以外のホーム以下は「~」にする。
-const flags = [
-  ...(process.env.RUSTFLAGS ?? "").split(/\s+/).filter(Boolean),
-  `--remap-path-prefix=${homedir()}=~`,
-  `--remap-path-prefix=${process.cwd()}=.`,
-];
+// 既に指定されているフラグは残し、その後ろに置き換えの指定を足す。
+// CARGO_ENCODED_RUSTFLAGS は区切りに U+001F を使う形式で、パスに空白があっても 1 つの引数として渡る。
+// cargo は CARGO_ENCODED_RUSTFLAGS があると RUSTFLAGS を見ないので、あるほうを引き継ぐ。
+const given = process.env.CARGO_ENCODED_RUSTFLAGS
+  ? process.env.CARGO_ENCODED_RUSTFLAGS.split("\x1f").filter(Boolean)
+  : (process.env.RUSTFLAGS ?? "").split(/\s+/).filter(Boolean);
+const flags = [...given, `--remap-path-prefix=${homedir()}=~`, `--remap-path-prefix=${process.cwd()}=.`];
 const env = {
   ...process.env,
   CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(base, projectName(), "target"),
-  // 区切りに U+001F を使う形式。パスに空白があっても 1 つの引数として渡る。
-  CARGO_ENCODED_RUSTFLAGS: process.env.CARGO_ENCODED_RUSTFLAGS ?? flags.join("\x1f"),
+  CARGO_ENCODED_RUSTFLAGS: flags.join("\x1f"),
 };
 const [command, ...args] = process.argv.slice(2);
 if (!command) {

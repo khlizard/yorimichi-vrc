@@ -1,4 +1,4 @@
-//! Parsed (in-memory) log models. Port of `ParsedModels.cs`.
+//! Parsed (in-memory) log models.
 
 use chrono::NaiveDateTime;
 

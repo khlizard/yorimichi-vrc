@@ -1,4 +1,4 @@
-//! Read-side queries for the UI. Port of `QueryService.cs` (identical SQL and parameter semantics).
+//! Read-side queries for the UI.
 //!
 //! `QueryService` borrows a `&Connection`, so an app keeping one query connection in a
 //! `Mutex<Connection>` can do `QueryService::new(&guard).get_visits(...)` per command.
@@ -12,9 +12,9 @@ use super::db;
 use super::dtos::*;
 use crate::Result;
 
-/// Default page size of [`QueryService::search_players`] in the C# app.
+/// Default page size of [`QueryService::search_players`].
 pub const DEFAULT_PLAYER_LIMIT: i64 = 200;
-/// Default (and maximum used by the UI) row limit of the 2000-row searches in the C# app.
+/// Default (and maximum used by the UI) row limit of the raw-event searches.
 pub const DEFAULT_RAW_LIMIT: i64 = 2000;
 
 pub(crate) type Param<'a> = (&'a str, &'a dyn ToSql);
@@ -120,7 +120,7 @@ impl<'a> QueryService<'a> {
     }
 
     /// Search every known name of every player (includes the local user), most encounters first.
-    /// The C# defaults were `offset = 0`, `limit = 200` ([`DEFAULT_PLAYER_LIMIT`]).
+    /// The default page is `offset = 0`, `limit = ` [`DEFAULT_PLAYER_LIMIT`].
     pub fn search_players(&self, term: &str, offset: i64, limit: i64) -> Result<Vec<PlayerHit>> {
         let pattern = like_pattern(term);
         let sql = format!(
@@ -310,7 +310,7 @@ impl<'a> QueryService<'a> {
     /// Raw log search, newest first with keyset paging on `(event_time DESC, id DESC)`.
     ///
     /// * `before`: `(event_time, id)` of the last row of the previous page; `None` for the first page.
-    /// * `limit`: page size (the C# default was 2000, [`DEFAULT_RAW_LIMIT`]).
+    /// * `limit`: page size (default [`DEFAULT_RAW_LIMIT`]).
     /// * A non-blank `term` tries FTS5 first (each space-separated word as a quoted phrase) and
     ///   falls back to LIKE if FTS rejects the query. A blank term lists rows without a text filter.
     pub fn search_raw_events(

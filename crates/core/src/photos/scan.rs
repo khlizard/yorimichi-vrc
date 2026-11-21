@@ -16,14 +16,16 @@ use crate::Result;
 
 pub const PHOTO_EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
 
-/// True for cloud placeholders (e.g. Dropbox online-only): reading them would download them.
+/// True for cloud placeholders (online-only files of Dropbox, OneDrive and other sync clients):
+/// reading them would download them.
 pub fn is_online_only(md: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
         const RECALL_ON_DATA_ACCESS: u32 = 0x0040_0000;
+        const RECALL_ON_OPEN: u32 = 0x0004_0000;
         const OFFLINE: u32 = 0x0000_1000;
-        md.file_attributes() & (RECALL_ON_DATA_ACCESS | OFFLINE) != 0
+        md.file_attributes() & (RECALL_ON_DATA_ACCESS | RECALL_ON_OPEN | OFFLINE) != 0
     }
     #[cfg(not(windows))]
     {

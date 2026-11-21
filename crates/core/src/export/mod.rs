@@ -1,5 +1,4 @@
 //! Self-contained HTML viewer with the encounter data embedded as JSON.
-//! Port of `ViewerExporter.cs`.
 
 use std::fmt::Write as _;
 use std::path::Path;

@@ -3,7 +3,7 @@
 //! Deliberately conservative: only high-volume avatar/engine boilerplate is listed,
 //! so world-creator Debug.Log output and anything unusual is kept.
 
-/// Built-in noise patterns (port of `RawLogNoise.Default`).
+/// Built-in noise patterns.
 pub const DEFAULT: &[&str] = &[
     "[Behaviour] Using default gesture mask",
     "[Behaviour] Using default fx mask",

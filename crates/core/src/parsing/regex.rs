@@ -1,4 +1,4 @@
-//! Compiled line patterns. Port of `LogLineRegex.cs` (the C# `""` in verbatim strings is a single `"`).
+//! Compiled line patterns for the VRChat log lines.
 
 use std::sync::LazyLock;
 

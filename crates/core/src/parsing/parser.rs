@@ -1,4 +1,4 @@
-//! Line-based state machine over a VRChat log. Port of `LogParser.cs`.
+//! Line-based state machine over a VRChat log.
 
 use std::collections::HashMap;
 use std::path::Path;

@@ -23,10 +23,9 @@ import { errText, type TabHandle } from "./components/util";
 import { AvatarsTab } from "./tabs/AvatarsTab";
 import { LogsTab } from "./tabs/LogsTab";
 import "./app-extra.css";
-import { AppNavContext, isShown, runBackIntercepts, type AppNav } from "./nav";
+import { AppNavContext, isShown, runBackIntercepts, type AppNav, type PhotoFilter } from "./nav";
 import { logicalDay } from "./photos/photoUtil";
 import { AlbumsTab, type AlbumsHandle } from "./albums/AlbumsTab";
-import { PhotoNavContext, type PhotoFilter } from "./photos/nav";
 import { PhotosTab, type PhotosHandle } from "./photos/PhotosTab";
 import { NotificationsTab } from "./tabs/NotificationsTab";
 import { PlayersTab, type PlayersHandle } from "./tabs/PlayersTab";
@@ -311,10 +310,6 @@ function Main() {
     go("photos", () => photos.current?.showFor(filter));
   };
   const showDay = (day: string) => go("timeline", () => timeline.current?.showDay(day));
-  const navigateToPhotosRef = useRef(navigateToPhotos);
-  navigateToPhotosRef.current = navigateToPhotos;
-  // Stable context value so tabs using it do not re-render on every App render.
-  const photoNav = useMemo(() => ({ showPhotos: (f: PhotoFilter) => navigateToPhotosRef.current(f) }), []);
 
   const appNavRef = useRef<AppNav>(null as unknown as AppNav);
   appNavRef.current = {
@@ -365,7 +360,6 @@ function Main() {
 
   return (
     <AppNavContext.Provider value={appNav}>
-    <PhotoNavContext.Provider value={photoNav}>
     <div className="app">
       <div className="toolbar">
         <button disabled={importing} onClick={() => importNow().catch((e) => showError(errText(e)))}>
@@ -448,7 +442,6 @@ function Main() {
         {panel("stats", <StatsTab ref={stats} active={tab === "stats"} from={from} to={to} />)}
       </div>
     </div>
-    </PhotoNavContext.Provider>
     </AppNavContext.Provider>
   );
 }

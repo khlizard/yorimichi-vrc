@@ -43,17 +43,17 @@ fn png_with_itxt(w: u32, h: u32, keyword: &str, text: &str) -> Vec<u8> {
 }
 
 const XMP: &str = "<x:xmpmeta><rdf:Description>\
-    <xmp:CreateDate>2026-11-20T00:42:34.8924589+09:00</xmp:CreateDate>\
+    <xmp:CreateDate>2026-01-10T20:30:00.1234567+09:00</xmp:CreateDate>\
     <vrc:WorldID>wrld_11111111-1111-1111-1111-111111111111</vrc:WorldID>\
-    <vrc:WorldDisplayName>Whisper &amp; Sleep</vrc:WorldDisplayName>\
+    <vrc:WorldDisplayName>Sample &amp; World</vrc:WorldDisplayName>\
     <vrc:AuthorID>usr_11111111-1111-1111-1111-111111111111</vrc:AuthorID>\
     </rdf:Description></x:xmpmeta>";
 
 #[test]
 fn file_name_patterns() {
     assert_eq!(
-        time_from_name("VRChat_2026-11-20_00-42-34.565_3840x2160.png"),
-        Some(dt(2026, 11, 20, 0, 42, 34))
+        time_from_name("VRChat_2026-01-10_20-30-00.123_3840x2160.png"),
+        Some(dt(2026, 1, 10, 20, 30, 0))
     );
     assert_eq!(time_from_name("vrc_2024-06-10_18-30-45_123.jpg"), Some(dt(2024, 6, 10, 18, 30, 45)));
     assert_eq!(
@@ -72,14 +72,14 @@ fn file_name_patterns() {
 
 #[test]
 fn invalid_dates_and_digit_boundaries() {
-    assert_eq!(time_from_name("VRChat_2026-13-20_00-42-34.png"), None);
-    assert_eq!(time_from_name("VRChat_2026-11-31_00-42-34.png"), None);
+    assert_eq!(time_from_name("VRChat_2026-13-20_20-30-00.png"), None);
+    assert_eq!(time_from_name("VRChat_2026-11-31_20-30-00.png"), None);
     assert_eq!(time_from_name("20241310_183045.jpg"), None);
     assert_eq!(time_from_name("120240610_183045.jpg"), None); // digit before
     assert_eq!(time_from_name("20240610_1830451.jpg"), None); // digit after
     // An invalid first match does not hide a later valid one.
     assert_eq!(
-        time_from_name("2026-13-20_00-42-34_2026-01-02_03-04-05.png"),
+        time_from_name("2026-13-20_20-30-00_2026-01-02_03-04-05.png"),
         Some(dt(2026, 1, 2, 3, 4, 5))
     );
 }
@@ -87,9 +87,9 @@ fn invalid_dates_and_digit_boundaries() {
 #[test]
 fn parse_xmp_fields_and_entities() {
     let x = parse_xmp(XMP);
-    assert_eq!(x.create_date, Some(dt(2026, 11, 20, 0, 42, 34)));
+    assert_eq!(x.create_date, Some(dt(2026, 1, 10, 20, 30, 0)));
     assert_eq!(x.world_id.as_deref(), Some("wrld_11111111-1111-1111-1111-111111111111"));
-    assert_eq!(x.world_name.as_deref(), Some("Whisper & Sleep"));
+    assert_eq!(x.world_name.as_deref(), Some("Sample & World"));
     assert_eq!(x.author_id.as_deref(), Some("usr_11111111-1111-1111-1111-111111111111"));
 
     let x = parse_xmp("<vrc:WorldDisplayName>&lt;a&gt; &quot;b&quot; &apos;c&apos;</vrc:WorldDisplayName>");
@@ -141,9 +141,9 @@ fn read_meta_priority() {
     std::fs::write(&p, png_with_itxt(100, 50, "XML:com.adobe.xmp", XMP)).unwrap();
     let m = read_meta(&p, mtime, true);
     assert_eq!(m.time_source, TimeSource::Xmp);
-    assert_eq!(m.taken_at, dt(2026, 11, 20, 0, 42, 34));
+    assert_eq!(m.taken_at, dt(2026, 1, 10, 20, 30, 0));
     assert_eq!((m.width, m.height), (Some(100), Some(50)));
-    assert_eq!(m.world_name.as_deref(), Some("Whisper & Sleep"));
+    assert_eq!(m.world_name.as_deref(), Some("Sample & World"));
     assert!(m.author_id.is_some());
 
     // Without reading content only the file name counts.
@@ -194,9 +194,9 @@ fn read_meta_jpeg_uses_xmp_date_and_world() {
     std::fs::write(&p, &with_xmp).unwrap();
     let m = read_meta(&p, dt(2020, 1, 1, 0, 0, 0), true);
     assert_eq!(m.time_source, TimeSource::Xmp);
-    assert_eq!(m.taken_at, dt(2026, 11, 20, 0, 42, 34));
+    assert_eq!(m.taken_at, dt(2026, 1, 10, 20, 30, 0));
     assert_eq!((m.width, m.height), (Some(30), Some(20)));
-    assert_eq!(m.world_name.as_deref(), Some("Whisper & Sleep"));
+    assert_eq!(m.world_name.as_deref(), Some("Sample & World"));
     assert_eq!(m.world_id.as_deref(), Some("wrld_11111111-1111-1111-1111-111111111111"));
     assert!(m.author_id.is_some());
 

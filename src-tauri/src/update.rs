@@ -1,4 +1,5 @@
-//! Auto-update through Velopack (feed = http(s) URL or a local folder from settings).
+//! Auto-update through Velopack. The feed is the project's GitHub Releases unless the settings
+//! name another one (an http(s) URL or a local folder).
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -12,7 +13,16 @@ use crate::app::{self, AppState};
 
 const FIRST_CHECK_DELAY: Duration = Duration::from_secs(30);
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 3600);
-pub const NO_FEED_MSG: &str = "更新の配布元が設定されていません。設定で指定してください。";
+/// Assets of the newest GitHub release: `releases.win.json` and the full package it lists.
+pub const DEFAULT_FEED: &str = "https://github.com/khlizard/vrc_logger/releases/latest/download";
+
+/// The feed to use: the one from the settings, or the default when that is blank.
+fn effective_feed(setting: &str) -> String {
+    match setting.trim() {
+        "" => DEFAULT_FEED.to_string(),
+        s => s.to_string(),
+    }
+}
 
 #[derive(Serialize, Clone)]
 struct UpdateReady {
@@ -41,13 +51,7 @@ pub fn start(app: &AppHandle) {
 }
 
 pub async fn check(app: AppHandle, manual: bool) {
-    let feed = app.state::<AppState>().settings.lock().unwrap().update_feed.trim().to_string();
-    if feed.is_empty() {
-        if manual {
-            app::set_status(&app, NO_FEED_MSG);
-        }
-        return;
-    }
+    let feed = effective_feed(&app.state::<AppState>().settings.lock().unwrap().update_feed);
     // Do not re-download while an update is already waiting for a restart.
     if let Some(info) = app.state::<AppState>().pending_update.lock().unwrap().as_ref() {
         if manual {
@@ -107,7 +111,7 @@ pub async fn check(app: AppHandle, manual: bool) {
 pub fn apply(app: &AppHandle) -> Result<(), String> {
     let st = app.state::<AppState>();
     let info = st.pending_update.lock().unwrap().clone().ok_or_else(|| "ダウンロード済みの更新がありません。".to_string())?;
-    let feed = st.settings.lock().unwrap().update_feed.trim().to_string();
+    let feed = effective_feed(&st.settings.lock().unwrap().update_feed);
     let manager = make_manager(&feed).map_err(|e| e.to_string())?;
     st.exit_requested.store(true, Ordering::SeqCst);
     // The Velopack call exits the process itself, bypassing RunEvent::Exit, so close the DB first.
@@ -118,4 +122,17 @@ pub fn apply(app: &AppHandle) -> Result<(), String> {
         return Err(e.to_string());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blank_setting_uses_the_default_feed() {
+        assert_eq!(effective_feed(""), DEFAULT_FEED);
+        assert_eq!(effective_feed("  \t"), DEFAULT_FEED);
+        assert_eq!(effective_feed(" D:\\feed "), "D:\\feed");
+        assert_eq!(effective_feed("https://example.com/f"), "https://example.com/f");
+    }
 }

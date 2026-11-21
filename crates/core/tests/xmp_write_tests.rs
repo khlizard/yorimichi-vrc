@@ -302,7 +302,7 @@ fn oversized_jpeg_payload_is_rejected() {
 fn probe_real_copies() {
     use vrclogger_core::photos::{remove_our_xmp_from_file, write_xmp_to_file, xmp_presence, XmpFields, XmpPresence};
     let dir = std::env::var("PROBE_DIR").unwrap();
-    let ts = chrono::NaiveDate::from_ymd_opt(2026, 11, 20).unwrap().and_hms_opt(3, 36, 18).unwrap();
+    let ts = chrono::NaiveDate::from_ymd_opt(2026, 1, 10).unwrap().and_hms_opt(20, 30, 0).unwrap();
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
         let name = path.file_name().unwrap().to_string_lossy().to_string();

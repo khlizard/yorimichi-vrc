@@ -1,4 +1,4 @@
-//! Rust-only extras (not part of the 31 ported xUnit tests): schema/FTS5 and helper checks.
+//! Schema, FTS5 and helper checks.
 
 mod common;
 

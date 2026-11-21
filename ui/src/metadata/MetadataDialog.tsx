@@ -24,9 +24,12 @@ const size = (bytes: number) =>
 const skipLabel = (r: SkipReason, mode: MetaMode) =>
   r === "hasMetadata" && mode === "remove" ? "このアプリが書いたメタデータがない" : SKIP_LABELS[r];
 
+const ONLINE_ONLY_HINT =
+  "、同期アプリのメニューでオンライン専用に戻してください（Dropbox は「オンライン専用にする」、OneDrive は「空き領域を増やす」）。";
+
 const WRITE_NOTES = [
   "写真ファイルを書き換えます（画像そのものは変わりません）。",
-  "Dropbox などに置いている場合、書き換えたファイルが再アップロードされます。",
+  "同期アプリ（Dropbox、OneDrive など）のフォルダに置いている場合、書き換えたファイルが再アップロードされます。",
   "すでにメタデータがある写真には何もしません。",
   "書き込んだ内容は、あとから取り除いて元のファイルに戻せます。",
 ];
@@ -52,10 +55,9 @@ function trapTab(e: KeyboardEvent<HTMLElement>) {
 
 export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; onClose: () => void }) {
   const { showError } = useDialog();
-  const fixed = opts.target;
+  const target = opts.target;
   const [step, setStep] = useState<Step>("planning");
   const [mode, setMode] = useState<MetaMode>(opts.mode ?? "write");
-  const [target, setTarget] = useState<MetaTarget>(fixed);
   const [plan, setPlan] = useState<MetaPlan | null>(null);
   const [progress, setProgress] = useState<MetaProgress | null>(null);
   const [summary, setSummary] = useState<{ s: MetaRunSummary; mode: MetaMode } | null>(null);
@@ -92,8 +94,6 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
   /** Plan without changing any file. On failure show the error and go back to the previous step. */
   const doPlan = async (t: MetaTarget, m: MetaMode, back: { step: Step; mode: MetaMode; plan: MetaPlan | null } | null) => {
     const g = ++gen.current;
-    const prevTarget = target;
-    setTarget(t);
     setPlan(null);
     setStep("planning");
     try {
@@ -108,7 +108,6 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
         onClose();
         return;
       }
-      setTarget(prevTarget);
       setMode(back.mode);
       setPlan(back.plan);
       setStep(back.step);
@@ -117,7 +116,7 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
 
   // Opened with a target: plan immediately.
   useEffect(() => {
-    void doPlan(fixed, mode, null);
+    void doPlan(target, mode, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -228,7 +227,7 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
                   </label>
                   <div className="md-muted">
                     1 枚ずつダウンロードし、メタデータが無ければ書き込みます。ダウンロードしたファイルはこの PC に残ります。不要になったら
-                    Dropbox のメニューの「オンライン専用にする」で戻してください。
+                    {ONLINE_ONLY_HINT}
                   </div>
                 </div>
               )}
@@ -296,7 +295,7 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
               {summary.s.downloaded > 0 && (
                 <div className="md-muted">
                   オンライン専用の写真を {nf(summary.s.downloaded)} 枚（{size(summary.s.downloadedBytes)}）ダウンロードして確認しました。
-                  これらはこの PC に残っています。不要なら Dropbox のメニューの「オンライン専用にする」で戻してください。
+                  これらはこの PC に残っています。不要なら{ONLINE_ONLY_HINT}
                 </div>
               )}
               {summary.s.lowDisk && (
@@ -306,7 +305,7 @@ export function MetadataDialog({ opts, onClose }: { opts: MetadataOpenOptions; o
               )}
               {summary.s.downloadStopped && (
                 <div className="md-warn" role="alert">
-                  ダウンロードの失敗が続いたため、途中で止めました。Dropbox などが動いているか確認してください。
+                  ダウンロードの失敗が続いたため、途中で止めました。同期アプリ（Dropbox、OneDrive など）が動いているか確認してください。
                 </div>
               )}
               {summary.s.failures.length > 0 && (

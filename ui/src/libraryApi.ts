@@ -180,8 +180,6 @@ export const visitPlayerBadges = (visitId: number) =>
 export const worlds = (term: string | null, favoriteOnly: boolean, sort: WorldSort) =>
   invoke<WorldRow[]>("worlds", { term, favoriteOnly, sort });
 
-export const world = (id: number) => invoke<WorldRow | null>("world", { id });
-
 export const setWorldNote = (worldRefId: number, memo: string, favorite: boolean) =>
   invoke<void>("set_world_note", { worldRefId, memo, favorite });
 
@@ -206,8 +204,6 @@ export const years = () => invoke<number[]>("years");
 // ---- Albums ----
 
 export const albums = () => invoke<AlbumRow[]>("albums");
-
-export const album = (id: number) => invoke<AlbumRow | null>("album", { id });
 
 export const createAlbum = (name: string, description: string) =>
   invoke<AlbumRow>("create_album", { name, description });

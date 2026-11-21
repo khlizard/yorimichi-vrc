@@ -6,10 +6,10 @@ use vrclogger_core::parsing::{noise, ParseOptions};
 
 fn sample_log(with_second_player: bool) -> String {
     let mut s = log(r"
-        2026.06.23 21:38:17 {P}User Authenticated: テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
-        2026.06.23 21:38:23 {P}[Behaviour] Entering Room: Sample World
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:91278~region(jp)
-        2026.06.23 21:38:33 {P}[Behaviour] OnPlayerJoined テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
+        2026.06.23 20:00:17 {P}User Authenticated: テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
+        2026.06.23 20:00:23 {P}[Behaviour] Entering Room: Sample World
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:12345~region(jp)
+        2026.06.23 20:00:33 {P}[Behaviour] OnPlayerJoined テスト／Tester (usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)
         2026.06.23 21:40:00 {P}[Video Playback] Resolving URL 'https://example.com/video.mp4'
     ");
     if with_second_player {
@@ -23,7 +23,7 @@ fn sample_log(with_second_player: bool) -> String {
 #[test]
 fn imports_and_skips_unchanged() {
     let fx = Fixture::new();
-    let path = fx.write_log("output_log_2026-06-23_21-38-10.txt", &sample_log(false));
+    let path = fx.write_log("output_log_2026-01-10_20-00-00.txt", &sample_log(false));
     let svc = ImportService::new(&fx.conn);
 
     assert!(svc.import_file(&path, None).unwrap());
@@ -40,7 +40,7 @@ fn imports_and_skips_unchanged() {
 #[test]
 fn reimports_grown_file_without_duplicates() {
     let fx = Fixture::new();
-    let path = fx.write_log("output_log_2026-06-23_21-38-10.txt", &sample_log(false));
+    let path = fx.write_log("output_log_2026-01-10_20-00-00.txt", &sample_log(false));
     let svc = ImportService::new(&fx.conn);
     svc.import_file(&path, None).unwrap();
 
@@ -59,7 +59,7 @@ fn reimports_grown_file_without_duplicates() {
 #[test]
 fn queries_return_imported_data() {
     let fx = Fixture::new();
-    let path = fx.write_log("output_log_2026-06-23_21-38-10.txt", &sample_log(true));
+    let path = fx.write_log("output_log_2026-01-10_20-00-00.txt", &sample_log(true));
     ImportService::new(&fx.conn).import_file(&path, None).unwrap();
     let q = QueryService::new(&fx.conn);
 
@@ -159,7 +159,7 @@ fn notifications_are_deduped_across_files_and_survive_reimport() {
             "2026.06.24 21:01:00 {P}AcceptNotification for notification:<Notification from username:Friend B, sender user id:usr_22222222-2222-2222-2222-222222222222 to usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa of type: friendRequest, id: frq_22222222-2222-2222-2222-222222222222, created at: 06/23/2026 12:39:00 UTC, details: {{{{}}}}, type:friendRequest, m seen:False, message: \"\">"
         ),
     );
-    let path1 = fx.write_log("output_log_2026-06-23_21-38-10.txt", &log1);
+    let path1 = fx.write_log("output_log_2026-01-10_20-00-00.txt", &log1);
     svc.import_file(&path1, None).unwrap();
     svc.import_file(&fx.write_log("output_log_2026-06-24_21-00-00.txt", &log2), None).unwrap();
 
@@ -248,16 +248,16 @@ fn avatar_events_are_linked_to_players_and_queryable() {
     let fx = Fixture::new();
     let svc = ImportService::new(&fx.conn);
     let text = log(r"
-        2026.06.23 21:38:23 {P}[Behaviour] Entering Room: Sample World
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
-        2026.06.23 21:38:25 {P}[Behaviour] OnPlayerJoined Alice (usr_11111111-1111-1111-1111-111111111111)
-        2026.06.23 21:38:30 {P}[Behaviour] Switching Alice to avatar First
-        2026.06.23 21:38:34 {P}[AssetBundleDownloadManager] Download for avatar (Worn:0 Dist:9.03) (44.2 MB) started 0 seconds and completed 3 seconds after queueing.
-        2026.06.23 21:38:34 {P}[AssetBundleDownloadManager] [114] Unpacking Avatar (First by Alice)
+        2026.06.23 20:00:23 {P}[Behaviour] Entering Room: Sample World
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+        2026.06.23 20:00:25 {P}[Behaviour] OnPlayerJoined Alice (usr_11111111-1111-1111-1111-111111111111)
+        2026.06.23 20:00:30 {P}[Behaviour] Switching Alice to avatar First
+        2026.06.23 20:00:34 {P}[AssetBundleDownloadManager] Download for avatar (Worn:0 Dist:9.03) (44.2 MB) started 0 seconds and completed 3 seconds after queueing.
+        2026.06.23 20:00:34 {P}[AssetBundleDownloadManager] [114] Unpacking Avatar (First by Alice)
         2026.06.23 21:50:00 {P}[Behaviour] Switching Alice to avatar Second
         2026.06.23 22:00:00 {P}[Behaviour] OnLeftRoom
     ");
-    svc.import_file(&fx.write_log("output_log_2026-06-23_21-38-10.txt", &text), None).unwrap();
+    svc.import_file(&fx.write_log("output_log_2026-01-10_20-00-00.txt", &text), None).unwrap();
 
     assert_eq!(fx.count("SELECT count(*) FROM avatar_events"), 2);
     assert_eq!(fx.count("SELECT count(*) FROM avatar_events WHERE player_id IS NOT NULL"), 2);
@@ -297,15 +297,15 @@ fn backfill_recovers_avatar_switches_from_raw_events() {
     // keep every line in raw_events
     let svc = ImportService::with_options(&fx.conn, ParseOptions::new(Vec::<String>::new()));
     let text = log(r"
-        2026.06.23 21:38:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
-        2026.06.23 21:38:25 {P}[Behaviour] OnPlayerJoined Alice (usr_11111111-1111-1111-1111-111111111111)
-        2026.06.23 21:38:30 {P}[Behaviour] Switching Alice to avatar Dress by Shop
-        2026.06.23 21:38:31 {P}[Behaviour] Switching Alice to avatar Dress by Shop
+        2026.06.23 20:00:23 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:1
+        2026.06.23 20:00:25 {P}[Behaviour] OnPlayerJoined Alice (usr_11111111-1111-1111-1111-111111111111)
+        2026.06.23 20:00:30 {P}[Behaviour] Switching Alice to avatar Dress by Shop
+        2026.06.23 20:00:31 {P}[Behaviour] Switching Alice to avatar Dress by Shop
         2026.06.23 21:50:00 {P}[Behaviour] Switching Alice to avatar Second
         2026.06.23 22:00:00 {P}[Behaviour] OnLeftRoom
         2026.06.23 22:01:00 {P}[Behaviour] Switching Nobody to avatar Lobby Look
     ");
-    svc.import_file(&fx.write_log("output_log_2026-06-23_21-38-10.txt", &text), None).unwrap();
+    svc.import_file(&fx.write_log("output_log_2026-01-10_20-00-00.txt", &text), None).unwrap();
     assert_eq!(fx.count("SELECT count(*) FROM avatar_events"), 3);
 
     // Simulate a database that predates avatar tracking.

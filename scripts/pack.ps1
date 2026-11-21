@@ -15,7 +15,7 @@ $targetDir = $meta.target_directory
 
 # Velopack は既存と同じか古いバージョンを作り直さないので、先に分かりやすく止める
 if (Test-Path (Join-Path $root "releases\VrcLogger-$version-full.nupkg")) {
-    throw "releases\ に $version が既にあります。Cargo.toml と tauri.conf.json のバージョンを上げてください"
+    throw "releases\ に $version が既にあります。Cargo.toml、src-tauri\tauri.conf.json、package.json のバージョンを上げてください"
 }
 
 # フロントエンドを埋め込んだ exe をビルド (インストーラーは Tauri ではなく Velopack で作る)
@@ -32,6 +32,7 @@ vpk pack `
     --packId VrcLogger `
     --packVersion $version `
     --packTitle VrcLogger `
+    --packAuthors khlizard `
     --runtime win-x64 `
     --packDir $stage `
     --mainExe vrclogger.exe `

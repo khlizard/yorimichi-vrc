@@ -373,7 +373,7 @@ export function SettingsTab({ onClose }: { onClose: () => void }) {
             更新の配布元 (URL またはフォルダ)
           </label>
           <input id="update-feed" type="text" value={s.UpdateFeed} onChange={(e) => patch({ UpdateFeed: e.target.value })} />
-          <div className="footnote">空欄のときは更新を確認しません。</div>
+          <div className="footnote">空欄のときは、公開されている最新版 (GitHub) を確認します。通常は空欄のままで構いません。</div>
           <div className="button-row">
             <button onClick={run(checkUpdate)}>更新を確認</button>
           </div>
