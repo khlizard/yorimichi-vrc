@@ -7,6 +7,7 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use common::dt;
+use vrclogger_core::{Error, PhotoError};
 use vrclogger_core::photos::{
     build_xmp, insert_xmp, parse_xmp, read_jpeg_xmp, remove_our_xmp_from_file, strip_our_xmp, write_xmp_to_file,
     xmp_presence, XmpFields, XmpPresence,
@@ -223,8 +224,8 @@ fn read_only_file_is_refused_and_unchanged() {
     perm.set_readonly(true);
     fs::set_permissions(&p, perm.clone()).unwrap();
 
-    let err = write_xmp_to_file(&p, &fields()).unwrap_err().to_string();
-    assert!(err.contains("read-only"), "{err}");
+    let err = write_xmp_to_file(&p, &fields()).unwrap_err();
+    assert!(matches!(err, Error::Photo(PhotoError::ReadOnly)), "{err}");
     assert!(remove_our_xmp_from_file(&p).is_err());
     assert_eq!(fs::read(&p).unwrap(), orig);
 

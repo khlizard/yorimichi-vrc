@@ -97,6 +97,38 @@ fn parse_xmp_fields_and_entities() {
 }
 
 #[test]
+fn parse_xmp_reads_attribute_form() {
+    // An image editor rewrites the packet with the values as attributes of rdf:Description.
+    let xml = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description rdf:about=""
+        xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:vrc="http://ns.vrchat.com/vrc/1.0/"
+        xmp:CreateDate="2026-01-10T20:30:00+09:00" vrc:WorldID="wrld_11111111-1111-1111-1111-111111111111"
+        vrc:WorldDisplayName="Sample &amp; &lt;World&gt; &quot;1&quot;" vrc:AuthorID='usr_11111111-1111-1111-1111-111111111111'>
+        </rdf:Description></rdf:RDF></x:xmpmeta>"#;
+    let x = parse_xmp(xml);
+    assert_eq!(x.create_date, Some(dt(2026, 1, 10, 20, 30, 0)));
+    assert_eq!(x.world_id.as_deref(), Some("wrld_11111111-1111-1111-1111-111111111111"));
+    assert_eq!(x.world_name.as_deref(), Some("Sample & <World> \"1\""));
+    assert_eq!(x.author_id.as_deref(), Some("usr_11111111-1111-1111-1111-111111111111"));
+    assert!(!x.ours);
+
+    // An empty attribute is no value, and AuthorID is not mistaken for Author.
+    let x = parse_xmp(r#"<rdf:Description vrc:WorldID="" vrc:AuthorID="usr_x"/>"#);
+    assert_eq!((x.world_id, x.author_id.as_deref(), x.author), (None, Some("usr_x"), None));
+}
+
+#[test]
+fn parse_xmp_prefers_elements_over_attributes() {
+    let xml = r#"<rdf:Description vrc:WorldID="wrld_attr" vrc:WorldDisplayName="Attr World"
+        xmp:CreateDate="2020-02-02T02:02:02+09:00"><vrc:WorldID>wrld_element</vrc:WorldID>
+        <xmp:CreateDate>2026-01-10T20:30:00+09:00</xmp:CreateDate></rdf:Description>"#;
+    let x = parse_xmp(xml);
+    assert_eq!(x.world_id.as_deref(), Some("wrld_element"));
+    assert_eq!(x.create_date, Some(dt(2026, 1, 10, 20, 30, 0)));
+    // A field with no element still comes from its attribute.
+    assert_eq!(x.world_name.as_deref(), Some("Attr World"));
+}
+
+#[test]
 fn parse_xmp_empty_and_missing() {
     let x = parse_xmp("<vrc:WorldDisplayName></vrc:WorldDisplayName><vrc:WorldID> </vrc:WorldID>");
     assert_eq!(x.world_name, None);

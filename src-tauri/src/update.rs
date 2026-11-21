@@ -86,22 +86,17 @@ pub async fn check(app: AppHandle, manual: bool) {
     })
     .await;
 
-    match r {
-        Ok(Ok(Some(info))) => {
+    match app::flatten_join(r) {
+        Ok(Some(info)) => {
             let version = info.TargetFullRelease.Version.to_string();
             *app.state::<AppState>().pending_update.lock().unwrap() = Some(info);
             app::set_status(&app, format!("更新をダウンロードしました: {version}"));
             let _ = app.emit("update-ready", UpdateReady { version });
         }
-        Ok(Ok(None)) => {}
-        Ok(Err(msg)) => {
+        Ok(None) => {}
+        Err(msg) => {
             if manual {
                 app::set_status(&app, format!("更新の確認エラー: {msg}"));
-            }
-        }
-        Err(e) => {
-            if manual {
-                app::set_status(&app, format!("更新の確認エラー: {e}"));
             }
         }
     }

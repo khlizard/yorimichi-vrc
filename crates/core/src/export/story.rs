@@ -17,7 +17,7 @@ use crate::data::library_dtos::{TimelineDay, TimelineVisit};
 use crate::data::photo_query::{PhotoRow, PhotoService};
 use crate::data::LibraryService;
 use crate::photos::thumbs::jpeg_bytes;
-use crate::{Error, Result};
+use crate::{Error, LibraryError, Result};
 
 const TEMPLATE: &str = include_str!("story.html");
 const M_TITLE: &str = "<!--__STORY_TITLE__-->";
@@ -165,7 +165,7 @@ pub fn export_album(
     now: NaiveDateTime,
 ) -> Result<ExportSummary> {
     let lib = LibraryService::new(conn);
-    let album = lib.album(album_id)?.ok_or_else(|| Error::Invalid("album not found".into()))?;
+    let album = lib.album(album_id)?.ok_or(LibraryError::AlbumNotFound)?;
     let photos = lib.album_photos(album_id)?;
     let svc = PhotoService::new(conn);
     let max_edge = edge(opts);

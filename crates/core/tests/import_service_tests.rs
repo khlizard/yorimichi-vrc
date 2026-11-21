@@ -138,6 +138,9 @@ fn notifications_are_deduped_across_files_and_survive_reimport() {
             "2026.06.23 21:45:00"
         ),
     );
+    let accept = format!(
+        "2026.06.24 21:01:00 {P}AcceptNotification for notification:<Notification from username:Friend B, sender user id:usr_22222222-2222-2222-2222-222222222222 to usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa of type: friendRequest, id: frq_22222222-2222-2222-2222-222222222222, created at: 06/23/2026 12:39:00 UTC, details: {{{{}}}}, type:friendRequest, m seen:False, message: \"\">"
+    );
     // Second session re-logs the same notification (VRChat replays recent notifications on login).
     let log2 = format!(
         "2026.06.24 21:00:00 {P}[Behaviour] Joining wrld_11111111-1111-1111-1111-111111111111:2\n{}\n{}\n{}\n2026.06.24 22:00:00 {P}[Behaviour] OnLeftRoom\n",
@@ -155,9 +158,7 @@ fn notifications_are_deduped_across_files_and_survive_reimport() {
             "usr_22222222-2222-2222-2222-222222222222",
             "2026.06.24 21:00:20"
         ),
-        format!(
-            "2026.06.24 21:01:00 {P}AcceptNotification for notification:<Notification from username:Friend B, sender user id:usr_22222222-2222-2222-2222-222222222222 to usr_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa of type: friendRequest, id: frq_22222222-2222-2222-2222-222222222222, created at: 06/23/2026 12:39:00 UTC, details: {{{{}}}}, type:friendRequest, m seen:False, message: \"\">"
-        ),
+        accept,
     );
     let path1 = fx.write_log("output_log_2026-01-10_20-00-00.txt", &log1);
     svc.import_file(&path1, None).unwrap();

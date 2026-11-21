@@ -38,12 +38,14 @@ mod win {
     impl ComGuard {
         fn new() -> Self {
             // S_OK / S_FALSE need a matching CoUninitialize; a failure such as RPC_E_CHANGED_MODE does not.
+            // SAFETY: plain COM initialisation of the current thread; the result decides whether `drop` uninitialises.
             Self(unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok())
         }
     }
     impl Drop for ComGuard {
         fn drop(&mut self) {
             if self.0 {
+                // SAFETY: pairs the successful CoInitializeEx of `new` on this same thread.
                 unsafe { CoUninitialize() };
             }
         }
@@ -52,6 +54,7 @@ mod win {
     struct Bitmap(HBITMAP);
     impl Drop for Bitmap {
         fn drop(&mut self) {
+            // SAFETY: the wrapped bitmap was returned by `GetImage`, is owned by this guard and is deleted once.
             unsafe {
                 let _ = DeleteObject(HGDIOBJ(self.0 .0));
             }
@@ -61,6 +64,8 @@ mod win {
     pub fn shell_thumbnail_jpeg(path: &Path, max_edge: u32) -> Option<Vec<u8>> {
         let _com = ComGuard::new();
         let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        // SAFETY: `wide` is NUL-terminated and outlives the call; `bmp` owns the returned bitmap for
+        // `read_bitmap`, and COM stays initialised on this thread through `_com`.
         let img = unsafe {
             let factory: IShellItemImageFactory = SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None).ok()?;
             let size = SIZE { cx: max_edge as i32, cy: max_edge as i32 };
@@ -70,7 +75,11 @@ mod win {
         encode(img, max_edge)
     }
 
+    /// # Safety
+    /// `bmp` must hold a valid GDI bitmap handle.
     unsafe fn read_bitmap(bmp: &Bitmap) -> Option<RgbImage> {
+        // SAFETY: `info` and `bi` are valid, correctly sized out-structures; `buf` holds `w * h * 4`
+        // bytes, exactly what `GetDIBits` writes for `h` lines of 32-bit pixels; the DC is released below.
         unsafe {
             let mut info = BITMAP::default();
             let got = GetObjectW(HGDIOBJ(bmp.0 .0), size_of::<BITMAP>() as i32, Some(&mut info as *mut _ as *mut _));

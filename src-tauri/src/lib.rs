@@ -1,9 +1,13 @@
 mod app;
 mod commands;
 mod idle;
+mod errors;
 mod library_commands;
+mod log_commands;
 mod maintenance;
+mod menu;
 mod metadata_commands;
+mod photo_commands;
 mod photos;
 mod settings;
 pub mod shell_thumb;
@@ -11,108 +15,11 @@ mod update;
 
 use std::sync::atomic::Ordering;
 
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 
 use app::AppState;
-use settings::{Settings, ThemeSetting};
-
-const ID_MENU_EXPORT: &str = "menu_export";
-const ID_MENU_BACKUP: &str = "menu_backup";
-const ID_MENU_METADATA: &str = "menu_metadata";
-const ID_MENU_SETTINGS: &str = "menu_settings";
-const ID_MENU_UPDATE: &str = "menu_update";
-const ID_MENU_EXIT: &str = "menu_exit";
-const ID_MENU_THEME_AUTO: &str = "menu_theme_auto";
-const ID_MENU_THEME_LIGHT: &str = "menu_theme_light";
-const ID_MENU_THEME_DARK: &str = "menu_theme_dark";
-const ID_TRAY_OPEN: &str = "tray_open";
-const ID_TRAY_IMPORT: &str = "tray_import";
-const ID_TRAY_EXPORT: &str = "tray_export";
-const ID_TRAY_SETTINGS: &str = "tray_settings";
-const ID_TRAY_EXIT: &str = "tray_exit";
-
-fn handle_menu(app: &AppHandle, id: &str) {
-    match id {
-        ID_MENU_EXPORT | ID_TRAY_EXPORT => {
-            tauri::async_runtime::spawn(app::export_viewer(app.clone()));
-        }
-        ID_MENU_BACKUP => {
-            tauri::async_runtime::spawn(maintenance::backup_now(app.clone(), false));
-        }
-        ID_MENU_METADATA => {
-            // Only opens the confirmation dialog; nothing is written until the user confirms there.
-            app::show_main(app);
-            let _ = app.emit("open-metadata-dialog", ());
-        }
-        ID_MENU_SETTINGS | ID_TRAY_SETTINGS => app::open_settings(app),
-        ID_MENU_UPDATE => {
-            tauri::async_runtime::spawn(update::check(app.clone(), true));
-        }
-        ID_MENU_THEME_AUTO => app::choose_theme(app, ThemeSetting::Auto),
-        ID_MENU_THEME_LIGHT => app::choose_theme(app, ThemeSetting::Light),
-        ID_MENU_THEME_DARK => app::choose_theme(app, ThemeSetting::Dark),
-        ID_MENU_EXIT | ID_TRAY_EXIT => app::exit_app(app),
-        ID_TRAY_OPEN => app::show_main(app),
-        ID_TRAY_IMPORT => {
-            tauri::async_runtime::spawn(app::run_import(app.clone(), false));
-        }
-        _ => {}
-    }
-}
-
-fn build_window_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let export = MenuItem::with_id(app, ID_MENU_EXPORT, "閲覧用 HTML を書き出す…", true, None::<&str>)?;
-    let backup = MenuItem::with_id(app, ID_MENU_BACKUP, "今すぐバックアップ", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, ID_MENU_SETTINGS, "設定(&S)…", true, None::<&str>)?;
-    let exit = MenuItem::with_id(app, ID_MENU_EXIT, "終了(&X)", true, None::<&str>)?;
-    let sep1 = PredefinedMenuItem::separator(app)?;
-    let sep2 = PredefinedMenuItem::separator(app)?;
-    let metadata =
-        MenuItem::with_id(app, ID_MENU_METADATA, "書き込めるすべての写真にメタデータを書き込む…", true, None::<&str>)?;
-    let file =
-        Submenu::with_items(app, "ファイル(&F)", true, &[&export, &backup, &metadata, &sep1, &settings, &sep2, &exit])?;
-    let current = app.state::<AppState>().settings.lock().unwrap().theme;
-    let check = |id: &str, text: &str, t: ThemeSetting| CheckMenuItem::with_id(app, id, text, true, current == t, None::<&str>);
-    let theme_items = vec![
-        (ThemeSetting::Auto, check(ID_MENU_THEME_AUTO, "自動", ThemeSetting::Auto)?),
-        (ThemeSetting::Light, check(ID_MENU_THEME_LIGHT, "ライト", ThemeSetting::Light)?),
-        (ThemeSetting::Dark, check(ID_MENU_THEME_DARK, "ダーク", ThemeSetting::Dark)?),
-    ];
-    let theme_menu = Submenu::with_items(app, "テーマ", true, &[&theme_items[0].1, &theme_items[1].1, &theme_items[2].1])?;
-    let view = Submenu::with_items(app, "表示(&V)", true, &[&theme_menu])?;
-    *app.state::<AppState>().theme_items.lock().unwrap() = theme_items;
-    let update = MenuItem::with_id(app, ID_MENU_UPDATE, "更新を確認", true, None::<&str>)?;
-    let help = Submenu::with_items(app, "ヘルプ(&H)", true, &[&update])?;
-    Menu::with_items(app, &[&file, &view, &help])
-}
-
-fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, ID_TRAY_OPEN, "開く", true, None::<&str>)?;
-    let import = MenuItem::with_id(app, ID_TRAY_IMPORT, "今すぐ取り込み", true, None::<&str>)?;
-    let export = MenuItem::with_id(app, ID_TRAY_EXPORT, "閲覧用 HTML を書き出す…", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, ID_TRAY_SETTINGS, "設定…", true, None::<&str>)?;
-    let sep = PredefinedMenuItem::separator(app)?;
-    let exit = MenuItem::with_id(app, ID_TRAY_EXIT, "終了", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &import, &export, &settings, &sep, &exit])?;
-
-    let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("VrcLogger")
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
-                app::show_main(tray.app_handle());
-            }
-        });
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
-    builder.build(app)?;
-    Ok(())
-}
+use settings::Settings;
 
 pub fn run() {
     tauri::Builder::default()
@@ -169,28 +76,28 @@ pub fn run() {
             commands::autostart_get,
             commands::copy_text,
             commands::open_url,
-            commands::recent_players,
-            commands::search_players,
-            commands::encounters,
-            commands::visits,
-            commands::visit_players,
-            commands::visit_urls,
-            commands::search_urls,
-            commands::search_raw_events,
-            commands::search_avatars,
-            commands::search_notifications,
-            commands::notification_kinds,
-            commands::search_moderation,
-            commands::rescan_photos,
-            commands::photos,
-            commands::photo_days,
-            commands::photos_for_visit,
-            commands::photo_detail,
-            commands::set_photo_favorite,
-            commands::reveal_photo,
-            commands::open_photo,
-            commands::photo_file_info,
-            commands::copy_photo_image,
+            log_commands::recent_players,
+            log_commands::search_players,
+            log_commands::encounters,
+            log_commands::visits,
+            log_commands::visit_players,
+            log_commands::visit_urls,
+            log_commands::search_urls,
+            log_commands::search_raw_events,
+            log_commands::search_avatars,
+            log_commands::search_notifications,
+            log_commands::notification_kinds,
+            log_commands::search_moderation,
+            photo_commands::rescan_photos,
+            photo_commands::photos,
+            photo_commands::photo_days,
+            photo_commands::photos_for_visit,
+            photo_commands::photo_detail,
+            photo_commands::set_photo_favorite,
+            photo_commands::reveal_photo,
+            photo_commands::open_photo,
+            photo_commands::photo_file_info,
+            photo_commands::copy_photo_image,
             library_commands::list_tags,
             library_commands::create_tag,
             library_commands::update_tag,
@@ -253,12 +160,12 @@ pub fn run() {
             app::update_title(&handle);
 
             if let Some(window) = handle.get_webview_window("main") {
-                window.set_menu(build_window_menu(&handle)?)?;
+                window.set_menu(menu::build_window_menu(&handle)?)?;
             }
-            build_tray(&handle)?;
+            menu::build_tray(&handle)?;
             app::apply_theme(&handle);
             // Global listener: receives both window-menu and tray-menu events (tray registers none itself, to avoid double handling).
-            handle.on_menu_event(|app, event| handle_menu(app, event.id().as_ref()));
+            handle.on_menu_event(|app, event| menu::handle_menu(app, event.id().as_ref()));
 
             app::restart_timer(&handle);
 
@@ -288,9 +195,11 @@ pub fn run() {
 }
 
 /// `app.exit` ends the process without dropping managed state, so close the query
-/// connection here; closing the last connection lets SQLite fold the WAL back and delete it.
+/// connections here; closing the last connection lets SQLite fold the WAL back and delete it.
 pub(crate) fn close_query_db(app: &AppHandle) {
     let st = app.state::<AppState>();
+    // The photo-lookup connection goes first, so the main one is the last open here.
+    drop(st.photo_query.lock().unwrap().take());
     let Some(conn) = st.query.lock().unwrap().take() else {
         return;
     };

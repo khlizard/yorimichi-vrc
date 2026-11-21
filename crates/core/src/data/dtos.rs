@@ -6,7 +6,7 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-const TS_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+use super::db::TS_FORMAT;
 
 /// `Xh MMm` when at least an hour, otherwise `Xm SSs`; empty if unparsable or leave < join.
 pub fn format_duration(join: &str, leave: &str) -> String {

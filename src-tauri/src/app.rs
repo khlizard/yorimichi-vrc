@@ -17,6 +17,7 @@ use vrclogger_core::data::import::ImportService;
 use vrclogger_core::export;
 use vrclogger_core::parsing::ParseOptions;
 
+use crate::errors::user_message;
 use crate::maintenance::should_vacuum;
 use crate::photos::{self, PhotosChanged};
 use crate::settings::{settings_dir, Settings, ThemeSetting};
@@ -27,6 +28,8 @@ pub struct AppState {
     pub settings: Mutex<Settings>,
     /// Connection used by the query commands (None if the DB could not be opened).
     pub query: Mutex<Option<Connection>>,
+    /// Second connection for photo lookups, so thumbnails are not held up by a long query on `query`.
+    pub photo_query: Mutex<Option<Connection>>,
     pub importing: AtomicBool,
     pub next_prune_at: Mutex<Option<Instant>>,
     pub exit_requested: AtomicBool,
@@ -53,6 +56,7 @@ impl AppState {
         Self {
             settings: Mutex::new(settings),
             query: Mutex::new(None),
+            photo_query: Mutex::new(None),
             importing: AtomicBool::new(false),
             next_prune_at: Mutex::new(None),
             exit_requested: AtomicBool::new(false),
@@ -87,6 +91,36 @@ pub struct StatusDto {
 struct ImportFinished {
     changed: bool,
     automatic: bool,
+}
+
+/// Shown when a query command runs while the database could not be opened.
+const NO_DB: &str = "データベースを開けません。設定の DB パスを確認してください。";
+
+/// Locks the query connection and runs `f` on it; the error text is the user-facing one.
+pub fn with_query_conn<T>(
+    state: &AppState,
+    f: impl FnOnce(&Connection) -> vrclogger_core::Result<T>,
+) -> Result<T, String> {
+    let guard = state.query.lock().unwrap();
+    let conn = guard.as_ref().ok_or_else(|| NO_DB.to_string())?;
+    f(conn).map_err(|e| user_message(&e))
+}
+
+/// Like [`with_query_conn`] on the connection kept for photo lookups (thumbnails, the context
+/// menu's metadata status), so those never wait behind a long query on the main connection.
+pub fn with_photo_conn<T>(
+    state: &AppState,
+    f: impl FnOnce(&Connection) -> vrclogger_core::Result<T>,
+) -> Result<T, String> {
+    let guard = state.photo_query.lock().unwrap();
+    let conn = guard.as_ref().ok_or_else(|| NO_DB.to_string())?;
+    f(conn).map_err(|e| user_message(&e))
+}
+
+/// Collapses the result of `spawn_blocking(|| -> Result<T, String>)`: a task that panicked or was
+/// cancelled becomes an error string, like the task's own error.
+pub fn flatten_join<T>(r: tauri::Result<Result<T, String>>) -> Result<T, String> {
+    r.map_err(|e| e.to_string())?
 }
 
 /// Opens (creating the parent directory and schema if needed) a database connection.
@@ -166,18 +200,20 @@ pub fn update_title(app: &AppHandle) {
     }
 }
 
-/// (Re)opens the query connection from the current settings.
+/// (Re)opens the query connections (the main one and the one for photo lookups) from the current settings.
 pub fn reopen_query_db(app: &AppHandle) -> Result<(), String> {
     let st = app.state::<AppState>();
     let path = st.settings.lock().unwrap().resolved_db_path();
-    match open_db(&path) {
-        Ok(conn) => {
-            *st.query.lock().unwrap() = Some(conn);
+    match open_db(&path).and_then(|query| Ok((query, open_db(&path)?))) {
+        Ok((query, photo_query)) => {
+            *st.query.lock().unwrap() = Some(query);
+            *st.photo_query.lock().unwrap() = Some(photo_query);
             Ok(())
         }
         Err(e) => {
             *st.query.lock().unwrap() = None;
-            Err(e.to_string())
+            *st.photo_query.lock().unwrap() = None;
+            Err(user_message(&e))
         }
     }
 }
@@ -284,17 +320,17 @@ pub async fn run_import(app: AppHandle, automatic: bool) {
     let app2 = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || -> Result<(bool, PhotosChanged), String> {
         // Import uses its own connection so query commands never collide with it.
-        let conn = open_db(&db_path).map_err(|e| e.to_string())?;
+        let conn = open_db(&db_path).map_err(|e| user_message(&e))?;
         let svc = ImportService::with_options(&conn, ParseOptions::new(noise.clone()));
         let progress = |m: &str| set_status(&app2, m);
         let imported = svc
             .import_folders(&folders, Some(&progress as &dyn Fn(&str)))
-            .map_err(|e| e.to_string())?
+            .map_err(|e| user_message(&e))?
             .imported
             > 0;
         let mut pruned_total = 0;
         if do_prune {
-            let pruned = svc.prune(retention, &noise, None).map_err(|e| e.to_string())?;
+            let pruned = svc.prune(retention, &noise, None).map_err(|e| user_message(&e))?;
             pruned_total = pruned.total();
             if pruned_total > 0 {
                 set_status(
@@ -312,20 +348,16 @@ pub async fn run_import(app: AppHandle, automatic: bool) {
     .await;
 
     let mut photo_changes = PhotosChanged::default();
-    let changed = match result {
-        Ok(Ok((changed, pc))) => {
+    let changed = match flatten_join(result) {
+        Ok((changed, pc)) => {
             photo_changes = pc;
             if do_prune {
                 *app.state::<AppState>().next_prune_at.lock().unwrap() = Some(Instant::now() + PRUNE_INTERVAL);
             }
             changed
         }
-        Ok(Err(msg)) => {
+        Err(msg) => {
             set_status(&app, format!("取り込みエラー: {msg}"));
-            true
-        }
-        Err(e) => {
-            set_status(&app, format!("取り込みエラー: {e}"));
             true
         }
     };
@@ -342,17 +374,16 @@ pub async fn reimport_all(app: AppHandle) {
     reset_prune(&app);
     let db_path = app.state::<AppState>().settings.lock().unwrap().resolved_db_path();
     let r = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let conn = open_db(&db_path).map_err(|e| e.to_string())?;
+        let conn = open_db(&db_path).map_err(|e| user_message(&e))?;
         let svc = ImportService::new(&conn);
-        svc.backfill_avatar_events_from_raw_events().map_err(|e| e.to_string())?;
-        svc.mark_all_for_reimport().map_err(|e| e.to_string())?;
+        svc.backfill_avatar_events_from_raw_events().map_err(|e| user_message(&e))?;
+        svc.mark_all_for_reimport().map_err(|e| user_message(&e))?;
         Ok(())
     })
     .await;
-    match r {
-        Ok(Ok(())) => run_import(app, false).await,
-        Ok(Err(msg)) => set_status(&app, format!("取り込みエラー: {msg}")),
-        Err(e) => set_status(&app, format!("取り込みエラー: {e}")),
+    match flatten_join(r) {
+        Ok(()) => run_import(app, false).await,
+        Err(msg) => set_status(&app, format!("取り込みエラー: {msg}")),
     }
 }
 
@@ -363,17 +394,16 @@ pub async fn vacuum(app: AppHandle) {
     let db_path = app.state::<AppState>().settings.lock().unwrap().resolved_db_path();
     set_status(&app, "DB 最適化中 (VACUUM)…");
     let r = tauri::async_runtime::spawn_blocking(move || -> Result<(i64, i64), String> {
-        let conn = open_db(&db_path).map_err(|e| e.to_string())?;
-        let before = db::file_size_bytes(&conn).map_err(|e| e.to_string())?;
-        db::vacuum(&conn).map_err(|e| e.to_string())?;
-        let after = db::file_size_bytes(&conn).map_err(|e| e.to_string())?;
+        let conn = open_db(&db_path).map_err(|e| user_message(&e))?;
+        let before = db::file_size_bytes(&conn).map_err(|e| user_message(&e))?;
+        db::vacuum(&conn).map_err(|e| user_message(&e))?;
+        let after = db::file_size_bytes(&conn).map_err(|e| user_message(&e))?;
         Ok((before, after))
     })
     .await;
-    match r {
-        Ok(Ok((b, a))) => set_status(&app, format!("DB 最適化完了: {} MB → {} MB", b / 1024 / 1024, a / 1024 / 1024)),
-        Ok(Err(msg)) => set_status(&app, format!("DB 最適化エラー: {msg}")),
-        Err(e) => set_status(&app, format!("DB 最適化エラー: {e}")),
+    match flatten_join(r) {
+        Ok((b, a)) => set_status(&app, format!("DB 最適化完了: {} MB → {} MB", b / 1024 / 1024, a / 1024 / 1024)),
+        Err(msg) => set_status(&app, format!("DB 最適化エラー: {msg}")),
     }
     set_importing(&app, false);
 }
@@ -388,19 +418,18 @@ pub fn export_start_dir(s: &Settings) -> std::path::PathBuf {
         .unwrap_or_else(settings_dir)
 }
 
-pub async fn export_viewer(app: AppHandle) {
-    let (db_path, start_dir) = {
-        let s = app.state::<AppState>().settings.lock().unwrap().clone();
-        (s.resolved_db_path(), export_start_dir(&s))
-    };
+/// Asks where to save an HTML export (the dialog opens in [`export_start_dir`]) and remembers the
+/// chosen folder as `last_viewer_export_folder`. `None` when the dialog was cancelled.
+pub async fn pick_html_save_path(app: &AppHandle, title: &'static str, file_name: String) -> Option<std::path::PathBuf> {
+    let start_dir = export_start_dir(&app.state::<AppState>().settings.lock().unwrap());
     let app_dlg = app.clone();
     let picked = tauri::async_runtime::spawn_blocking(move || {
         let mut b = app_dlg
             .dialog()
             .file()
-            .set_title("閲覧用 HTML を書き出す")
+            .set_title(title)
             .add_filter("HTML ファイル", &["html"])
-            .set_file_name("vrclog-viewer.html");
+            .set_file_name(file_name);
         if start_dir.is_dir() {
             b = b.set_directory(start_dir);
         }
@@ -409,26 +438,30 @@ pub async fn export_viewer(app: AppHandle) {
     .await
     .ok()
     .flatten();
-    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
-        return;
-    };
-
+    let path = picked.and_then(|p| p.into_path().ok())?;
     if let Some(folder) = path.parent() {
         let st = app.state::<AppState>();
         let mut s = st.settings.lock().unwrap();
         s.last_viewer_export_folder = Some(folder.display().to_string());
         let _ = s.save();
     }
+    Some(path)
+}
+
+pub async fn export_viewer(app: AppHandle) {
+    let db_path = app.state::<AppState>().settings.lock().unwrap().resolved_db_path();
+    let Some(path) = pick_html_save_path(&app, "閲覧用 HTML を書き出す", "vrclog-viewer.html".to_string()).await else {
+        return;
+    };
     let out = path.clone();
     let r = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let conn = open_db(&db_path).map_err(|e| e.to_string())?;
-        export::export(&conn, &out, Local::now().naive_local()).map_err(|e| e.to_string())
+        let conn = open_db(&db_path).map_err(|e| user_message(&e))?;
+        export::export(&conn, &out, Local::now().naive_local()).map_err(|e| user_message(&e))
     })
     .await;
-    match r {
-        Ok(Ok(())) => set_status(&app, format!("閲覧用 HTML を書き出しました: {}", path.display())),
-        Ok(Err(msg)) => set_status(&app, format!("閲覧用 HTML の書き出しエラー: {msg}")),
-        Err(e) => set_status(&app, format!("閲覧用 HTML の書き出しエラー: {e}")),
+    match flatten_join(r) {
+        Ok(()) => set_status(&app, format!("閲覧用 HTML を書き出しました: {}", path.display())),
+        Err(msg) => set_status(&app, format!("閲覧用 HTML の書き出しエラー: {msg}")),
     }
 }
 

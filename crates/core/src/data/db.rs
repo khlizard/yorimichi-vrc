@@ -79,9 +79,12 @@ pub fn backup_into(conn: &Connection, dest: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
+/// `chrono` format of the timestamps stored in the database: `yyyy-MM-dd HH:mm:ss`.
+pub const TS_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+
 /// Formats a timestamp as stored in the database: `yyyy-MM-dd HH:mm:ss`.
 pub fn ts(dt: NaiveDateTime) -> String {
-    dt.format("%Y-%m-%d %H:%M:%S").to_string()
+    dt.format(TS_FORMAT).to_string()
 }
 
 /// Escapes `\`, `%` and `_` for use in `LIKE ... ESCAPE '\'`.

@@ -7,16 +7,16 @@ use std::time::Duration;
 
 use chrono::{Local, NaiveDateTime};
 use tauri::{AppHandle, Emitter, Manager};
-use vrclogger_core::data::db;
+use vrclogger_core::data::db::{self, TS_FORMAT};
 
 use crate::app::{self, AppState};
+use crate::errors::user_message;
 use crate::idle;
 
 const IDLE_REQUIRED_SECS: u64 = 600;
 const CPU_BUSY_LIMIT: f32 = 0.20;
 const CPU_SAMPLE: Duration = Duration::from_secs(5);
 const CHECK_INTERVAL: Duration = Duration::from_secs(60);
-const TS_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
 /// Vacuum only pays off for a big file with a sizeable share of free pages.
 pub fn should_vacuum(db_size_bytes: i64, reclaimable_bytes: i64, min_db_mb: i64) -> bool {
@@ -109,17 +109,17 @@ pub async fn backup_now(app: AppHandle, automatic: bool) {
         app::set_status(&app, "バックアップ中…");
     }
     let r = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
-        let conn = app::open_db(&db_path).map_err(|e| e.to_string())?;
+        let conn = app::open_db(&db_path).map_err(|e| user_message(&e))?;
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
         let dest = folder.join(backup_file_name(Local::now().naive_local()));
-        db::backup_into(&conn, &dest).map_err(|e| e.to_string())?;
+        db::backup_into(&conn, &dest).map_err(|e| user_message(&e))?;
         // A failed prune must not turn a finished backup into an error.
         let _ = prune_backups(&folder, keep);
         Ok(dest.display().to_string())
     })
     .await;
-    match r {
-        Ok(Ok(path)) => {
+    match app::flatten_join(r) {
+        Ok(path) => {
             let saved = {
                 let st = app.state::<AppState>();
                 let mut s = st.settings.lock().unwrap();
@@ -130,8 +130,7 @@ pub async fn backup_now(app: AppHandle, automatic: bool) {
             let _ = app.emit("settings-changed", saved);
             app::set_status(&app, format!("バックアップしました: {path}"));
         }
-        Ok(Err(msg)) => app::set_status(&app, format!("バックアップエラー: {msg}")),
-        Err(e) => app::set_status(&app, format!("バックアップエラー: {e}")),
+        Err(msg) => app::set_status(&app, format!("バックアップエラー: {msg}")),
     }
     app::release_importing(&app);
 }

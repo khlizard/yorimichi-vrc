@@ -2,26 +2,22 @@
 
 use chrono::{Local, NaiveDate, NaiveDateTime};
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 use vrclogger_core::data::dtos::PlayerHit;
 use vrclogger_core::data::library::LibraryService;
 use vrclogger_core::data::library_dtos::*;
-use vrclogger_core::data::photo_query::{PhotoRow, PhotoService};
+use vrclogger_core::data::photo_query::PhotoRow;
 use vrclogger_core::export::story::{self, ExportSummary, StoryOptions};
 
 use crate::app::{self, AppState};
 use crate::commands::{parse_date, CmdResult};
-
-const NO_DB: &str = "データベースを開けません。設定の DB パスを確認してください。";
+use crate::errors::user_message;
 
 fn with_library<T>(
     state: &AppState,
     f: impl FnOnce(&LibraryService) -> vrclogger_core::Result<T>,
 ) -> CmdResult<T> {
-    let guard = state.query.lock().unwrap();
-    let conn = guard.as_ref().ok_or_else(|| NO_DB.to_string())?;
-    f(&LibraryService::new(conn)).map_err(|e| e.to_string())
+    app::with_query_conn(state, |conn| f(&LibraryService::new(conn)))
 }
 
 fn now() -> NaiveDateTime {
@@ -89,22 +85,7 @@ pub async fn visit_player_badges(state: State<'_, AppState>, visit_id: i64) -> C
         let s = state.settings.lock().unwrap();
         (s.reunion_days, s.show_first_met)
     };
-    let badges = with_library(&state, |l| l.visit_player_badges(visit_id, reunion_days))?;
-    Ok(filter_badges(badges, show_first_met))
-}
-
-fn filter_badges(badges: Vec<PlayerBadge>, show_first_met: bool) -> Vec<PlayerBadge> {
-    if show_first_met {
-        return badges;
-    }
-    badges
-        .into_iter()
-        .map(|mut b| {
-            b.first_met = false;
-            b
-        })
-        .filter(|b| b.days_since_last.is_some())
-        .collect()
+    with_library(&state, |l| l.visit_player_badges(visit_id, reunion_days, show_first_met))
 }
 
 // ---- Worlds ----
@@ -256,22 +237,7 @@ pub async fn create_album_from_visit(
     visit_id: i64,
     name: String,
 ) -> CmdResult<AlbumRow> {
-    let guard = state.query.lock().unwrap();
-    let conn = guard.as_ref().ok_or_else(|| NO_DB.to_string())?;
-    let ids: Vec<i64> = PhotoService::new(conn)
-        .photos_for_visit(visit_id)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|p| p.id)
-        .collect();
-    if ids.is_empty() {
-        return Err("このセッションには写真がありません".into());
-    }
-    let lib = LibraryService::new(conn);
-    let album = lib.create_album(&name, "", now()).map_err(|e| e.to_string())?;
-    lib.add_photos(album.id, &ids).map_err(|e| e.to_string())?;
-    // Re-read so the returned row carries the photo count and cover.
-    Ok(lib.album(album.id).map_err(|e| e.to_string())?.unwrap_or(album))
+    with_library(&state, |l| l.create_album_from_visit(visit_id, &name, now()))
 }
 
 // ---- Story export ----
@@ -303,53 +269,29 @@ enum StoryTarget {
 }
 
 async fn export_story(app: AppHandle, target: StoryTarget, file_name: String, include_players: bool) {
-    let (db_path, start_dir, hour) = {
+    let (db_path, hour) = {
         let s = app.state::<AppState>().settings.lock().unwrap().clone();
-        (s.resolved_db_path(), app::export_start_dir(&s), s.day_start_hour)
+        (s.resolved_db_path(), s.day_start_hour)
     };
-    let app_dlg = app.clone();
-    let picked = tauri::async_runtime::spawn_blocking(move || {
-        let mut b = app_dlg
-            .dialog()
-            .file()
-            .set_title("HTML を書き出す")
-            .add_filter("HTML ファイル", &["html"])
-            .set_file_name(file_name);
-        if start_dir.is_dir() {
-            b = b.set_directory(start_dir);
-        }
-        b.blocking_save_file()
-    })
-    .await
-    .ok()
-    .flatten();
-    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+    let Some(path) = app::pick_html_save_path(&app, "HTML を書き出す", file_name).await else {
         return;
     };
-
-    if let Some(folder) = path.parent() {
-        let st = app.state::<AppState>();
-        let mut s = st.settings.lock().unwrap();
-        s.last_viewer_export_folder = Some(folder.display().to_string());
-        let _ = s.save();
-    }
     app::set_status(&app, "書き出し中…");
     let out = path.clone();
     let r = tauri::async_runtime::spawn_blocking(move || -> Result<ExportSummary, String> {
-        let conn = app::open_db(&db_path).map_err(|e| e.to_string())?;
+        let conn = app::open_db(&db_path).map_err(|e| user_message(&e))?;
         let opts = StoryOptions { include_players, ..Default::default() };
         let now = now();
         match target {
             StoryTarget::Album(id) => story::export_album(&conn, id, &out, &opts, now),
             StoryTarget::Day(day) => story::export_day(&conn, day, hour, &out, &opts, now),
         }
-        .map_err(|e| e.to_string())
+        .map_err(|e| user_message(&e))
     })
     .await;
-    match r {
-        Ok(Ok(sum)) => app::set_status(&app, done_message(&path.display().to_string(), &sum)),
-        Ok(Err(msg)) => app::set_status(&app, format!("書き出しエラー: {msg}")),
-        Err(e) => app::set_status(&app, format!("書き出しエラー: {e}")),
+    match app::flatten_join(r) {
+        Ok(sum) => app::set_status(&app, done_message(&path.display().to_string(), &sum)),
+        Err(msg) => app::set_status(&app, format!("書き出しエラー: {msg}")),
     }
 }
 
@@ -498,15 +440,6 @@ mod tests {
         assert_eq!(sanitize_file_name("  "), "album");
         assert_eq!(sanitize_file_name("CON"), "_CON");
         assert_eq!(sanitize_file_name("旅の記録"), "旅の記録");
-    }
-
-    #[test]
-    fn badges_hide_first_met() {
-        let b = |id, first, days| PlayerBadge { player_id: id, first_met: first, days_since_last: days };
-        let out = filter_badges(vec![b(1, true, None), b(2, true, Some(200)), b(3, false, Some(5))], false);
-        assert_eq!(out.len(), 2);
-        assert!(out.iter().all(|x| !x.first_met));
-        assert_eq!(filter_badges(vec![b(1, true, None)], true).len(), 1);
     }
 
     #[test]

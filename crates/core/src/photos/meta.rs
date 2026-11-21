@@ -96,12 +96,42 @@ fn unescape(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
-/// Text of the first `<prefix:tag>text</...>` element; empty text is `None`.
+/// The XMP fields read by [`parse_xmp`].
+const XMP_FIELDS: [&str; 5] = ["CreateDate", "WorldID", "WorldDisplayName", "AuthorID", "Author"];
+
+/// How one field is written: as an element (`<vrc:WorldID>wrld_..</vrc:WorldID>`) or, in a file
+/// saved again by an image editor, as an attribute (`vrc:WorldID="wrld_.."` on `rdf:Description`).
+struct FieldPatterns {
+    tag: &'static str,
+    element: Regex,
+    attribute: Regex,
+}
+
+/// Compiled once: [`parse_xmp`] runs for every photo scanned.
+fn field_patterns() -> &'static [FieldPatterns] {
+    static PATTERNS: OnceLock<Vec<FieldPatterns>> = OnceLock::new();
+    PATTERNS.get_or_init(|| {
+        XMP_FIELDS
+            .iter()
+            .map(|&tag| FieldPatterns {
+                tag,
+                element: Regex::new(&format!(r"<(?:[\w.-]+:)?{tag}(?:\s[^>]*)?>([^<]*)</")).expect("valid pattern"),
+                attribute: Regex::new(&format!(r#"\s(?:[\w.-]+:)?{tag}\s*=\s*(?:"([^"]*)"|'([^']*)')"#))
+                    .expect("valid pattern"),
+            })
+            .collect()
+    })
+}
+
+/// Text of the first `<prefix:tag>text</...>` element, else the value of the first `prefix:tag="..."`
+/// attribute; empty text is `None`. An element wins over an attribute.
 fn element_text(xml: &str, tag: &str) -> Option<String> {
-    let pattern = format!(r"<(?:[\w.-]+:)?{tag}(?:\s[^>]*)?>([^<]*)</");
-    let m = Regex::new(&pattern).ok()?.captures(xml)?;
-    let text = unescape(m[1].trim());
-    (!text.is_empty()).then_some(text)
+    let f = field_patterns().iter().find(|f| f.tag == tag)?;
+    let clean = |s: &str| Some(unescape(s.trim())).filter(|t| !t.is_empty());
+    f.element.captures(xml).and_then(|m| clean(&m[1])).or_else(|| {
+        let m = f.attribute.captures(xml)?;
+        clean(m.get(1).or_else(|| m.get(2))?.as_str())
+    })
 }
 
 pub fn parse_xmp(xml: &str) -> XmpInfo {

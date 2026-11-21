@@ -2,6 +2,7 @@ mod common;
 
 use common::*;
 use vrclogger_core::data::LibraryService;
+use vrclogger_core::{Error, LibraryError, NameKind};
 
 fn setup() -> (Fixture, [i64; 4]) {
     let fx = Fixture::new();
@@ -26,7 +27,10 @@ fn create_update_delete_cascades() {
     assert_eq!((al.name.as_str(), al.description.as_str(), al.photo_count), ("Trip", "desc", 0));
     assert_eq!(al.created_at, "2026-07-01 08:00:00");
     assert_eq!(al.cover_photo_id, None);
-    assert!(lib.create_album("  ", "", dt(2026, 7, 1, 8, 0, 0)).is_err());
+    assert!(matches!(
+        lib.create_album("  ", "", dt(2026, 7, 1, 8, 0, 0)),
+        Err(Error::Library(LibraryError::EmptyName(NameKind::Album)))
+    ));
 
     let newer = lib.create_album("Newer", "", dt(2026, 7, 2, 8, 0, 0)).unwrap();
     assert_eq!(lib.albums().unwrap().iter().map(|a| a.id).collect::<Vec<_>>(), [newer.id, al.id]);
@@ -39,7 +43,10 @@ fn create_update_delete_cascades() {
     assert_eq!(got.photo_count, 2);
     assert_eq!(got.first_taken.as_deref(), Some("2026-06-01 10:00:00"));
     assert_eq!(got.last_taken.as_deref(), Some("2026-06-02 10:00:00"));
-    assert!(lib.update_album(al.id, "", "", None).is_err());
+    assert!(matches!(
+        lib.update_album(al.id, "", "", None),
+        Err(Error::Library(LibraryError::EmptyName(NameKind::Album)))
+    ));
 
     lib.delete_album(al.id).unwrap();
     assert!(lib.album(al.id).unwrap().is_none());
@@ -122,4 +129,53 @@ fn deleting_a_photo_row_leaves_the_album_consistent() {
     lib.add_photos(al.id, &[a, b]).unwrap();
     fx.conn.execute("DELETE FROM photos WHERE id = ?1", [a]).unwrap();
     assert_eq!(order(&lib, al.id), [b]);
+}
+
+/// One visit with two photos taken in it and one taken outside it.
+fn visit_fixture() -> (Fixture, i64, [i64; 2]) {
+    let fx = Fixture::new();
+    import_visits(&fx, &[V::new("2026.06.01", "20:00:00", "21:00:00", "Sample World", "wrld_11111111-1111-1111-1111-111111111111")]);
+    let a = add_photo(&fx, "in1.png", "2026-06-01 20:10:00");
+    let b = add_photo(&fx, "in2.png", "2026-06-01 20:20:00");
+    add_photo(&fx, "out.png", "2026-06-02 20:10:00");
+    let visit = fx.count("SELECT id FROM visits");
+    (fx, visit, [a, b])
+}
+
+#[test]
+fn album_from_visit_holds_the_visit_photos() {
+    let (fx, visit, [a, b]) = visit_fixture();
+    let lib = LibraryService::new(&fx.conn);
+    let album = lib.create_album_from_visit(visit, "  Night ", dt(2026, 7, 1, 8, 0, 0)).unwrap();
+    assert_eq!((album.name.as_str(), album.photo_count), ("Night", 2));
+    assert_eq!(album.cover_photo_id, Some(a));
+    assert_eq!(album.created_at, "2026-07-01 08:00:00");
+    assert_eq!(order(&lib, album.id), [a, b]);
+    assert_eq!(lib.albums().unwrap().len(), 1);
+}
+
+#[test]
+fn album_from_visit_that_fails_leaves_no_album() {
+    let (fx, visit, _) = visit_fixture();
+    let lib = LibraryService::new(&fx.conn);
+
+    // No such visit, and a visit without photos.
+    let r = lib.create_album_from_visit(424_242, "x", dt(2026, 7, 1, 8, 0, 0));
+    assert!(matches!(r, Err(Error::Library(LibraryError::NoPhotosInVisit))));
+    fx.conn.execute("UPDATE photos SET visit_id = NULL", []).unwrap();
+    let r = lib.create_album_from_visit(visit, "x", dt(2026, 7, 1, 8, 0, 0));
+    assert!(matches!(r, Err(Error::Library(LibraryError::NoPhotosInVisit))));
+    assert_eq!(fx.count("SELECT count(*) FROM albums"), 0);
+
+    // A blank name is refused before anything is created.
+    vrclogger_core::photos::relink_visits(&fx.conn).unwrap();
+    let r = lib.create_album_from_visit(visit, "  ", dt(2026, 7, 1, 8, 0, 0));
+    assert!(matches!(r, Err(Error::Library(LibraryError::EmptyName(NameKind::Album)))));
+    assert_eq!(fx.count("SELECT count(*) FROM albums"), 0);
+
+    // Failing while adding the photos (the table is gone) rolls the new album back too.
+    fx.conn.execute_batch("DROP TABLE album_photos").unwrap();
+    let r = lib.create_album_from_visit(visit, "Night", dt(2026, 7, 1, 8, 0, 0));
+    assert!(matches!(r, Err(Error::Sqlite(_))));
+    assert_eq!(fx.count("SELECT count(*) FROM albums"), 0);
 }

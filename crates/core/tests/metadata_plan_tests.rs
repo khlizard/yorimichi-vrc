@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use common::{dt, import_visits, Fixture, LOCAL_USR, V};
 use vrclogger_core::data::metadata::{MetaOutcome, MetaTarget, MetadataService, SkipReason, XmpState};
 use vrclogger_core::photos::scan_folders;
+use vrclogger_core::PhotoError;
 use xmp_helpers::*;
 
 const OFFSET: i32 = 540;
@@ -232,7 +233,10 @@ fn apply_failure_is_reported_not_raised() {
     let svc = MetadataService::new(&fx.conn);
     let id = id_of(&fx, "VRChat_2026-01-10_20-30-00.000.png");
     assert!(svc.classify_write(id, OFFSET, now()).unwrap().is_ok());
-    assert!(matches!(svc.apply_write(id, OFFSET, now()).unwrap(), MetaOutcome::Failed(_)));
+    assert!(matches!(
+        svc.apply_write(id, OFFSET, now()).unwrap(),
+        MetaOutcome::Failed(PhotoError::MalformedPng(_) | PhotoError::UnsupportedFormat)
+    ));
     assert_eq!(fs::read(&p).unwrap(), b"this is not a png at all");
 }
 

@@ -20,7 +20,7 @@ use super::meta::{
     XMP_KEYWORD,
 };
 use super::scan::is_online_only;
-use crate::{Error, Result};
+use crate::{Error, PhotoError, Result};
 
 /// Namespace of our provenance block.
 const OUR_NS: &str = "urn:vrclogger:meta:1.0";
@@ -149,8 +149,8 @@ fn crc32(data: &[u8]) -> u32 {
 
 // ---- format helpers ----------------------------------------------------------------------
 
-fn invalid(msg: &str) -> Error {
-    Error::Invalid(msg.to_string())
+fn invalid(e: PhotoError) -> Error {
+    Error::Photo(e)
 }
 
 fn is_png(data: &[u8]) -> bool {
@@ -179,16 +179,16 @@ fn png_chunks(data: &[u8]) -> Result<Vec<PngChunk>> {
     let mut pos = PNG_SIGNATURE.len();
     loop {
         if pos + 12 > data.len() {
-            return Err(invalid("malformed PNG: truncated before IEND"));
+            return Err(invalid(PhotoError::MalformedPng("truncated before IEND")));
         }
         let len = be_u32(&data[pos..]) as usize;
         let end = (pos + 12)
             .checked_add(len)
             .filter(|&e| e <= data.len())
-            .ok_or_else(|| invalid("malformed PNG: chunk runs past the end of the file"))?;
+            .ok_or_else(|| invalid(PhotoError::MalformedPng("chunk runs past the end of the file")))?;
         let kind = [data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]];
         if chunks.is_empty() && (&kind != b"IHDR" || len != 13) {
-            return Err(invalid("malformed PNG: IHDR missing"));
+            return Err(invalid(PhotoError::MalformedPng("IHDR missing")));
         }
         chunks.push(PngChunk { start: pos, end, kind, data: pos + 8..pos + 8 + len });
         if &kind == b"IEND" {
@@ -245,7 +245,7 @@ impl JpegSeg {
 
 /// Segments between SOI and SOS. Strict: anything unexpected is an error.
 fn jpeg_segments(data: &[u8]) -> Result<Vec<JpegSeg>> {
-    let bad = || invalid("malformed JPEG");
+    let bad = || invalid(PhotoError::MalformedJpeg);
     let mut segs = Vec::new();
     let mut pos = 2;
     loop {
@@ -290,7 +290,7 @@ pub fn insert_xmp(data: &[u8], xmp: &str) -> Result<Vec<u8>> {
         body.extend_from_slice(XMP_KEYWORD.as_bytes());
         body.extend_from_slice(&[0, 0, 0, 0, 0]); // nul, uncompressed, method, empty language, empty translated keyword
         body.extend_from_slice(xmp.as_bytes());
-        let data_len = u32::try_from(body.len() - 4).map_err(|_| invalid("XMP too large for a PNG chunk"))?;
+        let data_len = u32::try_from(body.len() - 4).map_err(|_| invalid(PhotoError::XmpTooLargeForPng))?;
         let mut chunk = data_len.to_be_bytes().to_vec();
         chunk.extend_from_slice(&body);
         chunk.extend_from_slice(&crc32(&body).to_be_bytes());
@@ -299,9 +299,7 @@ pub fn insert_xmp(data: &[u8], xmp: &str) -> Result<Vec<u8>> {
         let segs = jpeg_segments(data)?;
         let payload_len = JPEG_XMP_SIG.len() + xmp.len();
         if payload_len > MAX_JPEG_PAYLOAD {
-            return Err(Error::Invalid(format!(
-                "XMP is too large for a JPEG segment ({payload_len} > {MAX_JPEG_PAYLOAD} bytes)"
-            )));
+            return Err(invalid(PhotoError::XmpTooLargeForJpeg { size: payload_len, max: MAX_JPEG_PAYLOAD }));
         }
         let mut at = 2;
         for s in &segs {
@@ -317,7 +315,7 @@ pub fn insert_xmp(data: &[u8], xmp: &str) -> Result<Vec<u8>> {
         seg.extend_from_slice(xmp.as_bytes());
         Ok(splice(data, at, at, &seg))
     } else {
-        Err(invalid("unsupported format"))
+        Err(invalid(PhotoError::UnsupportedFormat))
     }
 }
 
@@ -357,7 +355,7 @@ pub fn strip_our_xmp(data: &[u8]) -> Result<Option<Vec<u8>>> {
             }
         }
     } else {
-        return Err(invalid("unsupported format"));
+        return Err(invalid(PhotoError::UnsupportedFormat));
     }
     if ranges.is_empty() {
         return Ok(None);
@@ -472,13 +470,13 @@ fn png_presence(file: &mut BufReader<File>) -> io::Result<XmpPresence> {
 
 fn refuse_unwritable(md: &fs::Metadata) -> Result<()> {
     if !md.is_file() {
-        return Err(invalid("not a regular file"));
+        return Err(invalid(PhotoError::NotAFile));
     }
     if is_online_only(md) {
-        return Err(invalid("the file is online-only; it would have to be downloaded first"));
+        return Err(invalid(PhotoError::OnlineOnly));
     }
     if md.permissions().readonly() {
-        return Err(invalid("the file is read-only"));
+        return Err(invalid(PhotoError::ReadOnly));
     }
     Ok(())
 }
@@ -490,7 +488,7 @@ fn normalized(s: Option<&str>) -> Option<&str> {
 /// In-memory proof that `new` is `orig` plus exactly our packet, and that the scanner's reader
 /// finds the intended values in it.
 fn verify_inserted(orig: &[u8], new: &[u8], f: &XmpFields) -> Result<()> {
-    let fail = |what: &str| Error::Invalid(format!("verification failed: {what}"));
+    let fail = |what: &'static str| invalid(PhotoError::Verification(what));
     if strip_our_xmp(new)?.as_deref() != Some(orig) {
         return Err(fail("removing the packet does not restore the original bytes"));
     }
@@ -511,7 +509,7 @@ fn verify_inserted(orig: &[u8], new: &[u8], f: &XmpFields) -> Result<()> {
 /// Atomically replaces `path` with `new` (temp file in the same directory, re-read, rename) and
 /// restores the timestamps `before` had. On any failure before the rename the original is untouched.
 fn replace_file(path: &Path, before: &fs::Metadata, new: &[u8]) -> Result<()> {
-    let name = path.file_name().ok_or_else(|| invalid("path has no file name"))?;
+    let name = path.file_name().ok_or_else(|| invalid(PhotoError::NoFileName))?;
     let tmp = path.with_file_name(format!(".{}.vrclogger-tmp", name.to_string_lossy()));
 
     let staged = (|| -> Result<()> {
@@ -522,11 +520,11 @@ fn replace_file(path: &Path, before: &fs::Metadata, new: &[u8]) -> Result<()> {
         f.sync_all()?;
         drop(f);
         if fs::read(&tmp)? != new {
-            return Err(invalid("verification failed: the temporary file differs from the intended bytes"));
+            return Err(invalid(PhotoError::Verification("the temporary file differs from the intended bytes")));
         }
         let now = fs::metadata(path)?;
         if now.len() != before.len() || now.modified()? != before.modified()? {
-            return Err(invalid("the file changed while it was being processed"));
+            return Err(invalid(PhotoError::ChangedWhileProcessing));
         }
         fs::rename(&tmp, path)?;
         Ok(())
@@ -552,7 +550,7 @@ fn replace_file(path: &Path, before: &fs::Metadata, new: &[u8]) -> Result<()> {
         .write(true)
         .open(path)
         .and_then(|f| f.set_times(times))
-        .map_err(|e| Error::Invalid(format!("the file was updated but its timestamps could not be restored: {e}")))
+        .map_err(|e| invalid(PhotoError::TimestampsNotRestored(e.to_string())))
 }
 
 /// Inserts our XMP into the file. Refuses read-only, online-only and already-tagged files.
@@ -560,7 +558,7 @@ pub fn write_xmp_to_file(path: &Path, f: &XmpFields) -> Result<()> {
     let md = fs::metadata(path)?;
     refuse_unwritable(&md)?;
     if xmp_presence(path)? != XmpPresence::None {
-        return Err(invalid("the file already contains XMP metadata"));
+        return Err(invalid(PhotoError::AlreadyHasXmp));
     }
     let orig = fs::read(path)?;
     let new = insert_xmp(&orig, &build_xmp(f))?;
@@ -581,7 +579,7 @@ pub fn remove_our_xmp_from_file(path: &Path) -> Result<bool> {
     };
     // The result must be a well-formed image without our marker, and strictly smaller.
     if new.len() >= orig.len() || strip_our_xmp(&new)?.is_some() {
-        return Err(invalid("verification failed: unexpected result of removing the packet"));
+        return Err(invalid(PhotoError::Verification("unexpected result of removing the packet")));
     }
     replace_file(path, &md, &new)?;
     Ok(true)

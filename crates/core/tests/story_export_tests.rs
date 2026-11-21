@@ -2,6 +2,7 @@ mod common;
 
 use common::*;
 use vrclogger_core::data::LibraryService;
+use vrclogger_core::{Error, LibraryError};
 use vrclogger_core::export::story::{export_album, export_day, StoryOptions};
 
 const W1: &str = "wrld_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -86,7 +87,8 @@ fn album_export_without_players_omits_names() {
 fn unknown_album_is_an_error_and_leaves_no_file() {
     let s = setup();
     let out = s.fx.dir.path().join("none.html");
-    assert!(export_album(&s.fx.conn, 424_242, &out, &StoryOptions::default(), now()).is_err());
+    let r = export_album(&s.fx.conn, 424_242, &out, &StoryOptions::default(), now());
+    assert!(matches!(r, Err(Error::Library(LibraryError::AlbumNotFound))));
     assert!(!out.exists());
 }
 

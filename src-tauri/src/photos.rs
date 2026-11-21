@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 use serde::Serialize;
 use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{AppHandle, Emitter, Manager};
-use vrclogger_core::data::photo_query::PhotoService;
+use vrclogger_core::data::photo_query::{PhotoFileRef, PhotoService};
 use vrclogger_core::photos::{is_online_only, make_thumbnail, relink_visits, scan_folders};
 
 use crate::app::{set_status, AppState};
@@ -168,27 +168,16 @@ fn ensure_shell_thumb(app: &AppHandle, file: &PhotoFile, cache: &Path) -> Option
     Some(bytes)
 }
 
-pub fn photo_file(conn: &Connection, id: i64) -> rusqlite::Result<Option<PhotoFile>> {
-    conn.query_row(
-        "SELECT path, missing, online_only, file_size, mtime FROM photos WHERE id = ?1",
-        [id],
-        |r| {
-            Ok(PhotoFile {
-                path: r.get(0)?,
-                missing: r.get(1)?,
-                online_only: r.get(2)?,
-                file_size: r.get(3)?,
-                mtime: r.get(4)?,
-            })
-        },
-    )
-    .optional()
+impl From<PhotoFileRef> for PhotoFile {
+    fn from(f: PhotoFileRef) -> Self {
+        Self { path: f.path, missing: f.missing, online_only: f.online_only, file_size: f.file_size, mtime: f.mtime }
+    }
 }
 
 fn lookup(app: &AppHandle, id: i64) -> Option<PhotoFile> {
     let st = app.state::<AppState>();
-    let guard = st.query.lock().unwrap();
-    photo_file(guard.as_ref()?, id).ok().flatten()
+    let guard = st.photo_query.lock().unwrap();
+    PhotoService::new(guard.as_ref()?).file_ref(id).ok().flatten().map(PhotoFile::from)
 }
 
 fn thumbs_dir(app: &AppHandle) -> Option<PathBuf> {
@@ -229,7 +218,7 @@ pub fn start_pregen(app: &AppHandle) {
         let mut offset = 0;
         while offset < PREGEN_MAX {
             let page = {
-                let guard = st.query.lock().unwrap();
+                let guard = st.photo_query.lock().unwrap();
                 let Some(conn) = guard.as_ref() else { return };
                 match PhotoService::new(conn).photo_ids_newest(PREGEN_PAGE, offset) {
                     Ok(p) => p,

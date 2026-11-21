@@ -19,7 +19,7 @@ use crate::photos::cloud::hydrate;
 use crate::photos::{
     is_online_only, refresh_file, remove_our_xmp_from_file, write_xmp_to_file, xmp_presence, XmpFields, XmpPresence,
 };
-use crate::{Error, Result};
+use crate::{PhotoError, Result};
 
 /// Which photos an operation is about.
 #[derive(Debug, Clone, Deserialize)]
@@ -29,6 +29,21 @@ pub enum MetaTarget {
     Ids { ids: Vec<i64> },
     /// Every photo in the library that is not flagged missing.
     All,
+}
+
+/// What a run does to each eligible photo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetaMode {
+    Write,
+    Remove,
+}
+
+/// File name, path and size of a photo row.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FileRow {
+    pub file_name: String,
+    pub path: String,
+    pub file_size: i64,
 }
 
 /// Why a photo is not eligible. Declaration order is the order used in plans.
@@ -97,12 +112,11 @@ pub struct MetaPlan {
     pub download_bytes: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetaOutcome {
     Done,
     Skipped(SkipReason),
-    Failed(String),
+    Failed(PhotoError),
 }
 
 /// What the file's XMP is, as far as can be told without downloading it.
@@ -203,6 +217,25 @@ impl<'a> MetadataService<'a> {
         }
     }
 
+    /// File name, path and size of a photo row; `None` for an unknown id.
+    pub fn file_row(&self, id: i64) -> Result<Option<FileRow>> {
+        Ok(self
+            .conn
+            .query_row("SELECT file_name, path, file_size FROM photos WHERE id = ?1", [id], |r| {
+                Ok(FileRow { file_name: r.get(0)?, path: r.get(1)?, file_size: r.get(2)? })
+            })
+            .optional()?)
+    }
+
+    /// The plan for `mode`: [`Self::plan_write`] or [`Self::plan_remove`].
+    /// `utc_offset_minutes` and `now` only matter to a write.
+    pub fn plan(&self, ids: &[i64], mode: MetaMode, utc_offset_minutes: i32, now: NaiveDateTime) -> Result<MetaPlan> {
+        match mode {
+            MetaMode::Write => self.plan_write(ids, utc_offset_minutes, now),
+            MetaMode::Remove => self.plan_remove(ids),
+        }
+    }
+
     fn photo_ref(&self, id: i64) -> Result<Option<(PhotoRef, bool)>> {
         Ok(self
             .conn
@@ -299,8 +332,8 @@ impl<'a> MetadataService<'a> {
         } else if row.xmp_known {
             return Ok(Err(SkipReason::HasMetadata));
         }
-        let taken_at = NaiveDateTime::parse_from_str(&row.taken_at, "%Y-%m-%d %H:%M:%S")
-            .map_err(|e| Error::Invalid(format!("bad taken_at '{}': {e}", row.taken_at)))?;
+        let taken_at = NaiveDateTime::parse_from_str(&row.taken_at, db::TS_FORMAT)
+            .map_err(|e| PhotoError::BadTakenAt { value: row.taken_at.clone(), reason: e.to_string() })?;
 
         let visit: Option<(i64, String, String)> = self
             .conn
@@ -501,13 +534,13 @@ impl<'a> MetadataService<'a> {
         }
         if placeholder {
             if let Err(e) = hydrate(Path::new(&path)) {
-                return Ok(plain(MetaOutcome::Failed(format!("could not download the file: {e}"))));
+                return Ok(plain(MetaOutcome::Failed(PhotoError::DownloadFailed(e.to_string()))));
             }
         }
         // Record the now-local file (its XMP, if any) before deciding; `apply_write` re-checks it.
         let outcome = match refresh_file(self.conn, Path::new(&path)) {
             Ok(_) => self.apply_write(photo_id, utc_offset_minutes, now)?,
-            Err(e) => MetaOutcome::Failed(format!("the library could not be refreshed: {e}")),
+            Err(e) => MetaOutcome::Failed(PhotoError::LibraryRefreshFailed(e.to_string())),
         };
         Ok(DownloadOutcome { outcome, downloaded: placeholder })
     }
@@ -524,9 +557,9 @@ impl<'a> MetadataService<'a> {
         // The row is refreshed even after a failure: the file may have changed anyway.
         let refreshed = refresh_file(self.conn, Path::new(path));
         Ok(match (op, refreshed) {
-            (Err(e), _) => MetaOutcome::Failed(e.to_string()),
+            (Err(e), _) => MetaOutcome::Failed(e.into()),
             (Ok(false), _) => MetaOutcome::Skipped(SkipReason::HasMetadata),
-            (Ok(true), Err(e)) => MetaOutcome::Failed(format!("the file was updated but the library could not be refreshed: {e}")),
+            (Ok(true), Err(e)) => MetaOutcome::Failed(PhotoError::UpdatedButLibraryRefreshFailed(e.to_string())),
             (Ok(true), Ok(_)) => MetaOutcome::Done,
         })
     }

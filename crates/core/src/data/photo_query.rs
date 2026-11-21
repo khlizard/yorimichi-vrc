@@ -4,7 +4,7 @@
 //! world recorded in their XMP metadata.
 
 use chrono::NaiveDate;
-use rusqlite::{Connection, Row};
+use rusqlite::{Connection, OptionalExtension, Row};
 use serde::Serialize;
 
 use super::query::{date_filter, query_rows, Param};
@@ -127,6 +127,16 @@ fn filter_clause(f: &PhotoFilter) -> (String, String, String) {
     (sql, from, to)
 }
 
+/// What the thumbnail cache needs to know about a photo file (its cache key and whether the file can be read).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhotoFileRef {
+    pub path: String,
+    pub missing: bool,
+    pub online_only: bool,
+    pub file_size: i64,
+    pub mtime: String,
+}
+
 pub struct PhotoService<'a> {
     conn: &'a Connection,
 }
@@ -242,6 +252,26 @@ impl<'a> PhotoService<'a> {
         Ok(query_rows(self.conn, "SELECT path FROM photos WHERE id = @id", &[("@id", &id)], |r| r.get(0))?
             .into_iter()
             .next())
+    }
+
+    /// Path, flags, size and mtime of one photo row (including a missing one); `None` for an unknown id.
+    pub fn file_ref(&self, id: i64) -> Result<Option<PhotoFileRef>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT path, missing, online_only, file_size, mtime FROM photos WHERE id = ?1",
+                [id],
+                |r| {
+                    Ok(PhotoFileRef {
+                        path: r.get(0)?,
+                        missing: r.get(1)?,
+                        online_only: r.get(2)?,
+                        file_size: r.get(3)?,
+                        mtime: r.get(4)?,
+                    })
+                },
+            )
+            .optional()?)
     }
 
     pub fn set_favorite(&self, id: i64, favorite: bool) -> Result<()> {

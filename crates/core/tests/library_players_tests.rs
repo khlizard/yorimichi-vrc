@@ -2,6 +2,7 @@ mod common;
 
 use common::*;
 use vrclogger_core::data::{ImportService, LibraryService};
+use vrclogger_core::{Error, LibraryError, NameKind};
 
 const W1: &str = "wrld_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const W2: &str = "wrld_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -45,7 +46,10 @@ fn tags_crud_and_duplicate_name() {
     assert_eq!(dup.color, "#ff0000"); // existing tag is returned unchanged
     let bad = lib.create_tag("Bad", "red").unwrap();
     assert_eq!(bad.color, "#6b7280");
-    assert!(lib.create_tag("   ", "#000000").is_err());
+    assert!(matches!(
+        lib.create_tag("   ", "#000000"),
+        Err(Error::Library(LibraryError::EmptyName(NameKind::Tag)))
+    ));
 
     lib.update_tag(bad.id, "Alpha", "#112233").unwrap();
     let tags = lib.list_tags().unwrap();
@@ -170,23 +174,38 @@ fn badges_first_met_and_reunion() {
     let (a, b) = (player_id(&fx, USR_A), player_id(&fx, USR_B));
     let (v1, v2, v3) = (visit_id(&fx, "2026-06-01"), visit_id(&fx, "2026-06-05"), visit_id(&fx, "2026-06-20"));
 
-    let first = lib.visit_player_badges(v1, 7).unwrap();
+    let first = lib.visit_player_badges(v1, 7, true).unwrap();
     assert_eq!(first.len(), 2);
     assert!(first.iter().all(|p| p.first_met && p.days_since_last.is_none()));
 
     // A left at 06-01 21:40 and came back 06-05 21:00: 3 whole days
-    assert!(lib.visit_player_badges(v2, 7).unwrap().is_empty());
-    let r = lib.visit_player_badges(v2, 3).unwrap();
+    assert!(lib.visit_player_badges(v2, 7, true).unwrap().is_empty());
+    let r = lib.visit_player_badges(v2, 3, true).unwrap();
     assert_eq!(r.len(), 1);
     assert_eq!((r[0].player_id, r[0].first_met, r[0].days_since_last), (a, false, Some(3)));
-    assert!(lib.visit_player_badges(v2, 4).unwrap().is_empty());
+    assert!(lib.visit_player_badges(v2, 4, true).unwrap().is_empty());
 
-    let r = lib.visit_player_badges(v3, 7).unwrap();
+    let r = lib.visit_player_badges(v3, 7, true).unwrap();
     let get = |id: i64| r.iter().find(|p| p.player_id == id).unwrap().days_since_last;
     assert_eq!((get(a), get(b)), (Some(14), Some(18)));
     // 0 disables the reunion badge, and nobody is a first meeting here
-    assert!(lib.visit_player_badges(v3, 0).unwrap().is_empty());
-    assert!(lib.visit_player_badges(999_999, 7).unwrap().is_empty());
+    assert!(lib.visit_player_badges(v3, 0, true).unwrap().is_empty());
+    assert!(lib.visit_player_badges(999_999, 7, true).unwrap().is_empty());
+}
+
+#[test]
+fn badges_can_hide_first_met() {
+    let fx = setup();
+    let lib = LibraryService::new(&fx.conn);
+    let a = player_id(&fx, USR_A);
+    let (v1, v2) = (visit_id(&fx, "2026-06-01"), visit_id(&fx, "2026-06-05"));
+
+    // Everyone in the first visit is only a first meeting: nothing is left once that badge is off.
+    assert!(lib.visit_player_badges(v1, 7, false).unwrap().is_empty());
+    // A reunion badge is kept, and the player no longer counts as a first meeting.
+    let r = lib.visit_player_badges(v2, 3, false).unwrap();
+    assert_eq!(r.len(), 1);
+    assert_eq!((r[0].player_id, r[0].first_met, r[0].days_since_last), (a, false, Some(3)));
 }
 
 #[test]

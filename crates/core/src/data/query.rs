@@ -16,6 +16,8 @@ use crate::Result;
 pub const DEFAULT_PLAYER_LIMIT: i64 = 200;
 /// Default (and maximum used by the UI) row limit of the raw-event searches.
 pub const DEFAULT_RAW_LIMIT: i64 = 2000;
+/// Most rows [`QueryService::search_urls`] returns.
+pub const MAX_URL_HITS: usize = 2000;
 
 pub(crate) type Param<'a> = (&'a str, &'a dyn ToSql);
 
@@ -277,7 +279,7 @@ impl<'a> QueryService<'a> {
         )?)
     }
 
-    /// `kind` of `None` or `Some("")` means all kinds. Limited to 2000 rows.
+    /// `kind` of `None` or `Some("")` means all kinds. Limited to [`MAX_URL_HITS`] rows.
     pub fn search_urls(
         &self,
         term: &str,
@@ -295,7 +297,7 @@ impl<'a> QueryService<'a> {
             FROM url_events u LEFT JOIN visits v ON v.id = u.visit_id
             WHERE 1=1{term_clause}{kind_clause}{clause}
             ORDER BY u.event_time DESC
-            LIMIT 2000
+            LIMIT {MAX_URL_HITS}
             "
         );
         let pattern = like_pattern(term);
