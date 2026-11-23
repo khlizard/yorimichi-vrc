@@ -136,8 +136,57 @@ fn visit_seconds_are_capped_at_24_hours() {
     import_visits(&fx, &[v]);
     let lib = LibraryService::new(&fx.conn);
     let act = lib.activity(d(2026, 12, 1), d(2026, 12, 2), H).unwrap();
-    assert_eq!(act.len(), 1);
-    assert_eq!(act[0].seconds, 24 * 3600);
+    // Capped at 10:00 on the 2nd, then split at the 06:00 day start.
+    let days: Vec<_> = act.iter().map(|a| (a.day.as_str(), a.seconds, a.visit_count)).collect();
+    assert_eq!(days, [("2026-12-01", 20 * 3600, 1), ("2026-12-02", 4 * 3600, 1)]);
+}
+
+#[test]
+fn visit_running_past_the_day_start_also_opens_the_next_day() {
+    let fx = Fixture::new();
+    import_visits(
+        &fx,
+        &[
+            // 04:00-09:00: 2 h on the 20th (logical), 3 h on the 21st
+            V::new("2026.11.21", "04:00:00", "09:00:00", "Night World", W2).with("Friend B", USR_B, "04:10:00", "08:50:00"),
+            V::new("2026.11.21", "10:00:00", "11:00:00", "Morning World", W1),
+        ],
+    );
+    add_photo(&fx, "night.png", "2026-11-21 05:00:00");
+    add_photo(&fx, "morning.png", "2026-11-21 08:00:00");
+    let lib = LibraryService::new(&fx.conn);
+
+    let d20 = lib.timeline_day(d(2026, 11, 20), H, 0, false).unwrap();
+    assert_eq!(d20.visits.len(), 1);
+    assert!(!d20.visits[0].carried_over);
+    assert_eq!((d20.visit_count, d20.total_seconds, d20.people_count, d20.photo_count), (1, 2 * 3600, 1, 1));
+    assert_eq!(d20.visits[0].photos.len(), 1);
+
+    let d21 = lib.timeline_day(d(2026, 11, 21), H, 0, false).unwrap();
+    let worlds: Vec<_> = d21.visits.iter().map(|v| (v.world_name.as_str(), v.carried_over)).collect();
+    assert_eq!(worlds, [("Night World", true), ("Morning World", false)]);
+    // Only the part after 06:00 counts toward the day; the visit itself keeps its full length.
+    assert_eq!((d21.visit_count, d21.total_seconds, d21.people_count, d21.photo_count), (2, 4 * 3600, 1, 1));
+    assert_eq!((d21.visits[0].seconds, d21.visits[0].duration.as_str()), (5 * 3600, "5h 00m"));
+    let night: Vec<_> = d21.visits[0].photos.iter().map(|p| p.taken_at.as_str()).collect();
+    assert_eq!(night, ["2026-11-21 08:00:00"]);
+    assert!(d21.loose_photos.is_empty(), "the 08:00 photo is not in a time without a log");
+
+    let act = lib.activity(d(2026, 11, 20), d(2026, 11, 21), H).unwrap();
+    let days: Vec<_> = act.iter().map(|a| (a.day.as_str(), a.seconds, a.visit_count, a.people_count, a.photo_count)).collect();
+    assert_eq!(days, [("2026-11-20", 2 * 3600, 1, 1, 1), ("2026-11-21", 4 * 3600, 2, 1, 1)]);
+    // A range that starts on the 21st still sees the visit joined the day before.
+    let only21 = lib.activity(d(2026, 11, 21), d(2026, 11, 21), H).unwrap();
+    assert_eq!((only21[0].seconds, only21[0].visit_count), (4 * 3600, 2));
+
+    let memories = lib.on_this_day(d(2027, 11, 21), H).unwrap();
+    assert_eq!(memories[0].worlds, ["Night World", "Morning World"]);
+    assert_eq!((memories[0].visit_count, memories[0].people_count), (2, 1));
+
+    // With a midnight start nothing crosses a day start.
+    let m21 = lib.timeline_day(d(2026, 11, 21), 0, 0, false).unwrap();
+    assert!(m21.visits.iter().all(|v| !v.carried_over));
+    assert_eq!((m21.visit_count, m21.total_seconds), (2, 6 * 3600));
 }
 
 #[test]

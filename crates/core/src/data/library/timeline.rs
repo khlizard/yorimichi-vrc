@@ -14,15 +14,16 @@ impl LibraryService<'_> {
         show_first_met: bool,
     ) -> Result<TimelineDay> {
         let (start, end) = window(day, day_start_hour);
+        let earliest = earliest_join(day, day_start_hour);
         let secs = secs_sql("v.join_time", "v.leave_time");
         let sql = format!(
             r"SELECT v.id, v.world_name, w.world_id, v.world_id, coalesce(n.favorite, 0), coalesce(n.memo, ''),
                      v.instance_id, v.location, v.join_time, v.leave_time, {secs}
               FROM visits v LEFT JOIN worlds w ON w.id = v.world_id LEFT JOIN world_notes n ON n.world_id = v.world_id
-              WHERE v.join_time >= @s AND v.join_time < @e
+              WHERE v.join_time >= @b AND v.join_time < @e
               ORDER BY v.join_time, v.id"
         );
-        let mut visits = query_rows(self.conn, &sql, &[("@s", &start), ("@e", &end)], |r| {
+        let mut visits = query_rows(self.conn, &sql, &[("@b", &earliest), ("@e", &end)], |r| {
             let join_time: String = r.get(8)?;
             let leave_time: String = r.get(9)?;
             Ok(TimelineVisit {
@@ -38,10 +39,22 @@ impl LibraryService<'_> {
                 join_time,
                 leave_time,
                 seconds: r.get(10)?,
+                carried_over: false,
                 players: Vec::new(),
                 photos: Vec::new(),
             })
         })?;
+        // Keep the visits of this day: those joined in it, and one from before that was still
+        // going when it began. Only the part inside the day counts toward its total.
+        let mut total_seconds = 0;
+        visits.retain_mut(|v| match seconds_on(&v.join_time, &v.leave_time, day, day_start_hour) {
+            Some(secs) => {
+                v.carried_over = v.join_time < start;
+                total_seconds += secs;
+                true
+            }
+            None => false,
+        });
 
         let mut people: HashSet<i64> = HashSet::new();
         for v in &mut visits {
@@ -67,7 +80,7 @@ impl LibraryService<'_> {
         let photo_count = (loose_photos.len() + visits.iter().map(|v| v.photos.len()).sum::<usize>()) as i64;
         Ok(TimelineDay {
             day: day.format("%Y-%m-%d").to_string(),
-            total_seconds: visits.iter().map(|v| v.seconds).sum(),
+            total_seconds,
             visit_count: visits.len() as i64,
             people_count: people.len() as i64,
             photo_count,
@@ -88,50 +101,54 @@ impl LibraryService<'_> {
     }
 
     /// Per-day totals in `[from, to]` (logical days, inclusive); only days with a visit or a
-    /// non-missing photo, ascending. Visit time is attributed to the day of `join_time`.
+    /// non-missing photo, ascending. A visit counts on every day it was in (see [`visit_days`]),
+    /// with its time split at the day starts; people are those met in the day's visits.
     pub fn activity(&self, from: NaiveDate, to: NaiveDate, day_start_hour: u32) -> Result<Vec<DayActivity>> {
         let (start, _) = window(from, day_start_hour);
         let (_, end) = window(to, day_start_hour);
-        let params: &[(&str, &dyn rusqlite::ToSql)] = &[("@s", &start), ("@e", &end)];
+        let earliest = earliest_join(from, day_start_hour);
         let mut days: BTreeMap<String, DayActivity> = BTreeMap::new();
-        let d = day_expr("v.join_time", day_start_hour);
-        let secs = secs_sql("v.join_time", "v.leave_time");
+
         let visit_rows = query_rows(
             self.conn,
-            &format!(
-                "SELECT {d}, sum({secs}), count(*) FROM visits v WHERE v.join_time >= @s AND v.join_time < @e GROUP BY 1"
-            ),
-            params,
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)),
+            "SELECT id, join_time, leave_time FROM visits WHERE join_time >= @b AND join_time < @e",
+            &[("@b", &earliest), ("@e", &end)],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
         )?;
-        let people_rows = query_rows(
-            self.conn,
-            &format!(
-                r"SELECT {d}, count(DISTINCT e.player_id)
-                  FROM encounters e JOIN visits v ON v.id = e.visit_id JOIN players p ON p.id = e.player_id
-                  WHERE p.is_local = 0 AND v.join_time >= @s AND v.join_time < @e GROUP BY 1"
-            ),
-            params,
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
-        )?;
+        let mut days_of_visit: HashMap<i64, Vec<String>> = HashMap::new();
+        for (id, join, leave) in visit_rows {
+            for (d, secs) in visit_days(&join, &leave, day_start_hour) {
+                if d < from || d > to {
+                    continue;
+                }
+                let key = d.format("%Y-%m-%d").to_string();
+                let a = days.entry(key.clone()).or_insert_with(|| empty_day(key.clone()));
+                a.seconds += secs;
+                a.visit_count += 1;
+                days_of_visit.entry(id).or_default().push(key);
+            }
+        }
+        let mut people: HashMap<String, HashSet<i64>> = HashMap::new();
+        for (visit, players) in self.players_by_visit(&earliest, &end)? {
+            for d in days_of_visit.get(&visit).into_iter().flatten() {
+                people.entry(d.clone()).or_default().extend(&players);
+            }
+        }
+        for (d, set) in people {
+            if let Some(a) = days.get_mut(&d) {
+                a.people_count = set.len() as i64;
+            }
+        }
+
         let photo_rows = query_rows(
             self.conn,
             &format!(
                 "SELECT {}, count(*) FROM photos WHERE missing = 0 AND taken_at >= @s AND taken_at < @e GROUP BY 1",
                 day_expr("taken_at", day_start_hour)
             ),
-            params,
+            &[("@s", &start), ("@e", &end)],
             |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
         )?;
-
-        for (day, seconds, count) in visit_rows {
-            days.entry(day.clone())
-                .or_insert_with(|| empty_day(day))
-                .apply_visits(seconds, count);
-        }
-        for (day, n) in people_rows {
-            days.entry(day.clone()).or_insert_with(|| empty_day(day)).people_count = n;
-        }
         for (day, n) in photo_rows {
             days.entry(day.clone()).or_insert_with(|| empty_day(day)).photo_count = n;
         }
@@ -203,23 +220,29 @@ impl LibraryService<'_> {
 
     fn memory_year(&self, day: NaiveDate, h: u32) -> Result<Option<MemoryYear>> {
         let (start, end) = window(day, h);
-        let names: Vec<String> = query_rows(
+        let earliest = earliest_join(day, h);
+        let rows: Vec<(i64, String, String, String)> = query_rows(
             self.conn,
-            "SELECT world_name FROM visits WHERE join_time >= @s AND join_time < @e ORDER BY join_time, id",
-            &[("@s", &start), ("@e", &end)],
-            |r| r.get(0),
+            "SELECT id, world_name, join_time, leave_time FROM visits WHERE join_time >= @b AND join_time < @e ORDER BY join_time, id",
+            &[("@b", &earliest), ("@e", &end)],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )?;
+        let (ids, names): (HashSet<i64>, Vec<String>) = rows
+            .into_iter()
+            .filter(|(_, _, join, leave)| seconds_on(join, leave, day, h).is_some())
+            .map(|(id, name, _, _)| (id, name))
+            .unzip();
         let photos = self.window_photos(&start, &end)?;
         if names.is_empty() && photos.is_empty() {
             return Ok(None);
         }
-        let people: i64 = self.conn.query_row(
-            r"SELECT count(DISTINCT e.player_id)
-              FROM encounters e JOIN visits v ON v.id = e.visit_id JOIN players p ON p.id = e.player_id
-              WHERE p.is_local = 0 AND v.join_time >= ?1 AND v.join_time < ?2",
-            [&start, &end],
-            |r| r.get(0),
-        )?;
+        let people = self
+            .players_by_visit(&earliest, &end)?
+            .into_iter()
+            .filter(|(visit, _)| ids.contains(visit))
+            .flat_map(|(_, players)| players)
+            .collect::<HashSet<i64>>()
+            .len() as i64;
         let mut worlds: Vec<String> = Vec::new();
         for n in &names {
             if worlds.len() < 5 && !worlds.contains(n) {
@@ -235,6 +258,23 @@ impl LibraryService<'_> {
             worlds,
             photos: pick_memory_photos(photos, 8),
         }))
+    }
+
+    /// Non-local players met in each visit joined in `[from, to)`.
+    fn players_by_visit(&self, from: &str, to: &str) -> Result<HashMap<i64, Vec<i64>>> {
+        let rows = query_rows(
+            self.conn,
+            r"SELECT DISTINCT e.visit_id, e.player_id
+              FROM encounters e JOIN visits v ON v.id = e.visit_id JOIN players p ON p.id = e.player_id
+              WHERE p.is_local = 0 AND v.join_time >= @b AND v.join_time < @e",
+            &[("@b", &from), ("@e", &to)],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+        )?;
+        let mut out: HashMap<i64, Vec<i64>> = HashMap::new();
+        for (visit, player) in rows {
+            out.entry(visit).or_default().push(player);
+        }
+        Ok(out)
     }
 
     // ---- stats -------------------------------------------------------------------------
@@ -336,11 +376,41 @@ fn empty_day(day: String) -> DayActivity {
     DayActivity { day, seconds: 0, visit_count: 0, people_count: 0, photo_count: 0 }
 }
 
-impl DayActivity {
-    fn apply_visits(&mut self, seconds: i64, count: i64) {
-        self.seconds = seconds;
-        self.visit_count = count;
+fn day_start(day: NaiveDate, h: u32) -> NaiveDateTime {
+    day.and_hms_opt(hour(h), 0, 0).expect("hour is clamped to 0..=23")
+}
+
+/// Joins before this cannot reach logical day `day`: a visit counts for at most [`MAX_SECONDS`].
+fn earliest_join(day: NaiveDate, h: u32) -> String {
+    db::ts(day_start(day, h) - Duration::seconds(MAX_SECONDS))
+}
+
+/// The logical days a visit counts on, each with the seconds spent in it: the day it was joined,
+/// then every following day it was still in the world when that day began (a night that runs
+/// past the day start also opens the next day). The visit is capped at [`MAX_SECONDS`] like
+/// [`secs_sql`]; a join time that does not parse gives no days.
+fn visit_days(join: &str, leave: &str, h: u32) -> Vec<(NaiveDate, i64)> {
+    let Ok(join) = NaiveDateTime::parse_from_str(join, TS_FORMAT) else { return Vec::new() };
+    let leave = NaiveDateTime::parse_from_str(leave, TS_FORMAT)
+        .unwrap_or(join)
+        .clamp(join, join + Duration::seconds(MAX_SECONDS));
+    let mut day = (join - Duration::hours(i64::from(hour(h)))).date();
+    let mut from = join;
+    let mut out = Vec::new();
+    loop {
+        let next = day_start(day, h) + Duration::days(1);
+        out.push((day, (leave.min(next) - from).num_seconds()));
+        if leave <= next {
+            return out;
+        }
+        from = next;
+        day = next.date();
     }
+}
+
+/// Seconds a visit spent in logical day `day`, or `None` when it does not count on that day.
+fn seconds_on(join: &str, leave: &str, day: NaiveDate, h: u32) -> Option<i64> {
+    visit_days(join, leave, h).into_iter().find(|(d, _)| *d == day).map(|(_, secs)| secs)
 }
 
 /// Favorites first (time order), then the others spread evenly over the day, up to `max` in total.

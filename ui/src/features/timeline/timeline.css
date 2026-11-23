@@ -127,6 +127,11 @@
   line-height: 20px;
   font-size: 14px;
 }
+/* 前日から: a visit that was already going when the day began */
+.tl-time-carried {
+  font-size: 12px;
+  color: var(--muted);
+}
 .tl-mark {
   position: absolute;
   left: 62px;

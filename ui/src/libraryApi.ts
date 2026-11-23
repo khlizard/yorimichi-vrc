@@ -76,7 +76,10 @@ export interface TimelineVisit {
   joinTime: string;
   leaveTime: string;
   duration: string;
+  /** The whole visit, not just the part inside this day. */
   seconds: number;
+  /** Joined before this day began and still there when it did. */
+  carriedOver: boolean;
   players: TimelinePlayer[];
   photos: PhotoRow[];
 }

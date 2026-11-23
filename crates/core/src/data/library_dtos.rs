@@ -110,7 +110,10 @@ pub struct TimelineVisit {
     pub join_time: String,
     pub leave_time: String,
     pub duration: String,
+    /// The whole visit (`duration`), not just the part inside this day.
     pub seconds: i64,
+    /// Joined before this day began and still there when it did (shown as "from the day before").
+    pub carried_over: bool,
     pub players: Vec<TimelinePlayer>,
     pub photos: Vec<PhotoRow>,
 }

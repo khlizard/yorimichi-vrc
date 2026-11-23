@@ -35,6 +35,7 @@ function visit(visitId: number, joinTime: string): TimelineVisit {
     leaveTime: joinTime,
     duration: "",
     seconds: 0,
+    carriedOver: false,
     players: [],
     photos: [],
   };

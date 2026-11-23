@@ -5,9 +5,12 @@
 //! log re-import (`visits.id` does not).
 //!
 //! A *logical day* starts at `day_start_hour:00` and ends at the same hour the next day; a
-//! timestamp `t` belongs to `date(t, '-{h} hours')`. A visit belongs to the day of its `join_time`.
+//! timestamp `t` belongs to `date(t, '-{h} hours')`. A visit counts on the day of its
+//! `join_time` and on each following day it was still in the world when that day began; its
+//! time is split at the day starts (see `visit_days` in `library/timeline.rs`). Statistics over
+//! a period still take whole visits by `join_time`.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use rusqlite::{params, Connection, OptionalExtension};

@@ -273,11 +273,15 @@ pub fn export_day(
         for (_, stop) in &stops {
             match stop {
                 Stop::Visit(v) => {
-                    writeln!(w, "<section class=\"stop\"><div class=\"when\">{}</div>", esc(hm(&v.join_time)))?;
+                    let when = if v.carried_over { "前日から" } else { hm(&v.join_time) };
+                    writeln!(w, "<section class=\"stop\"><div class=\"when\">{}</div>", esc(when))?;
                     writeln!(w, "<h2>{}</h2>", esc(&v.world_name))?;
                     let mut meta = format!("{} – {}", hm(&v.join_time), hm(&v.leave_time));
                     if !v.duration.is_empty() {
                         meta.push_str(&format!(" · {}", v.duration));
+                    }
+                    if v.carried_over {
+                        meta.push_str(" · 前日から続く");
                     }
                     writeln!(w, "<p class=\"meta\">{}</p>", esc(&meta))?;
                     if opts.include_players && !v.players.is_empty() {

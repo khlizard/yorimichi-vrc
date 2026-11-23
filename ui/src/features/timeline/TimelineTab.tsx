@@ -359,7 +359,11 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
             {stops.map((s) =>
               s.kind === "visit" ? (
                 <li className="tl-stop" key={s.key}>
-                  <span className="tl-time">{s.visit.joinTime.slice(11, 16)}</span>
+                  {s.visit.carriedOver ? (
+                    <span className="tl-time tl-time-carried">前日から</span>
+                  ) : (
+                    <span className="tl-time">{s.visit.joinTime.slice(11, 16)}</span>
+                  )}
                   <span className="tl-mark" aria-hidden="true" />
                   <div className="tl-world">
                     <button type="button" className="tl-link" onClick={() => nav.showVisit(s.visit.visitId)}>
@@ -388,7 +392,8 @@ export const TimelineTab = forwardRef<TimelineHandle, Props>(function TimelineTa
                     )}
                   </div>
                   <div className="tl-meta" title={s.visit.location}>
-                    {s.visit.joinTime.slice(11, 16)} – {s.visit.leaveTime.slice(11, 16)} · {s.visit.duration} · インスタンス{" "}
+                    {s.visit.joinTime.slice(11, 16)} – {s.visit.leaveTime.slice(11, 16)} · {s.visit.duration}
+                    {s.visit.carriedOver && " · 前日から続く"} · インスタンス{" "}
                     {s.visit.instanceId.split("~")[0]}
                   </div>
                   {renderPeople(s.visit)}

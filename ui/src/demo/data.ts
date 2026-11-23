@@ -131,6 +131,7 @@ const visits: TimelineVisit[] = VISITS.map((v, i) => {
     leaveTime: stamp(v.leave),
     duration: d.text,
     seconds: d.seconds,
+    carriedOver: false,
     players,
     photos: v.photos.map((t, k) => {
       const s = stamp(t);
