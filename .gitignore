@@ -32,3 +32,5 @@ backups/
 .env*
 .claude/
 CLAUDE.md
+CLAUDE.local.md
+*.local.md
