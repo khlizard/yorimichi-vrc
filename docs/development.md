@@ -53,15 +53,38 @@ pnpm tauri build --no-bundle   # %LOCALAPPDATA%\yorimichi-dev\target\release\yor
 pwsh scripts/pack.ps1          # releases\ にインストーラーと更新用のパッケージを作成
 ```
 
-- `pack.ps1` は、`releases\` に同じバージョンがあると止まります。配布のたびに `Cargo.toml`、`src-tauri/tauri.conf.json`、`package.json` のバージョンを上げてください。
+- `pack.ps1` は exe のビルドから行います。`releases\` に同じバージョンがあると止まります。
 - インストーラーは、アプリを `%LOCALAPPDATA%\Yorimichi` に入れます。
 - 含まれるライブラリのライセンスの一覧 (`THIRD-PARTY-LICENSES.html`) は、`pack.ps1` が作って同梱します。単独で作るには `pnpm third-party` を実行します。`about.toml` に無いライセンスの依存が増えると、作成が止まります。
+- `releases\` は git の管理外です。前の版のパッケージを消さずに残すと、`pack.ps1` が前の版からの差分 (`-delta.nupkg`) も作ります。
 
-アプリは、GitHub の最新リリースから更新を探します。リリースには、`releases\` にできた次の 3 つを添付してください。
+## リリースを出す
 
-- `Yorimichi-win-Setup.exe`
-- `Yorimichi-<バージョン>-full.nupkg`
-- `releases.win.json`
+細かい修正はコミットだけしておき、ある程度まとまってから版を上げて出します。使う人が困る不具合の修正は、1 件でもすぐ出します。
+
+1. 前の版からの変更を見る: `git log v<前の版>..main --oneline`。`feat:` と `fix:` のコミットが、リリースノートの材料になります。
+2. バージョンを上げる。書かれている所は次の 4 つです (`git grep -n '<今の版>'` で探せます)。
+   - `Cargo.toml` (`[workspace.package]` の `version`)
+   - `Cargo.lock` (`yorimichi` と `yorimichi-core` の 2 か所)
+   - `src-tauri/tauri.conf.json`
+   - `package.json`
+3. `chore: バージョンを <版> にする` としてコミットし、`pwsh scripts/pack.ps1` で配布物を作る。
+4. できた `Yorimichi-win-Setup.exe` を、インストール済みのアプリの上から入れ、起動して確かめる。
+5. `main` を push し、版を上げたコミットにタグ `v<版>` を付けて push する。
+6. GitHub の Release を作り、`releases\` にできた次の 4 つを添付する。アプリは GitHub の最新リリースから更新を探します。
+   - `Yorimichi-win-Setup.exe`
+   - `Yorimichi-<版>-full.nupkg`
+   - `Yorimichi-<版>-delta.nupkg` (前の版があるときだけできます。付けると更新のダウンロードが小さくなります)
+   - `releases.win.json`
+
+   ```powershell
+   gh release create v<版> --verify-tag --title "Yorimichi <版>" --notes-file <ノート.md> `
+     releases/Yorimichi-win-Setup.exe releases/Yorimichi-<版>-full.nupkg `
+     releases/Yorimichi-<版>-delta.nupkg releases/releases.win.json
+   ```
+
+- `v*` のタグは GitHub の設定で保護しており、消したり付け替えたりできません。間違えたら、版を上げて出し直します。
+- リリースノートには、インストールの仕方 (署名が無いので Windows の警告が出ること)、その版の変更、VRChat の非公式ツールであることを書きます。
 
 ## 構成
 
