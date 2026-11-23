@@ -292,6 +292,29 @@ pub fn read_jpeg_xmp(reader: impl Read) -> io::Result<Option<String>> {
     }))
 }
 
+/// How far (seconds) the XMP date may be from the date in the file name before the name is
+/// trusted instead. A camera photo's two dates differ by the seconds it takes to save the file.
+pub const XMP_NAME_TOLERANCE_SECS: i64 = 5 * 60;
+
+/// Picks the taken-at time: the XMP date, else the file-name date, else the file's mtime.
+///
+/// When the XMP date and the file-name date disagree by more than [`XMP_NAME_TOLERANCE_SECS`],
+/// the file name wins. A VRChat print saved from a world carries the date its creator made
+/// it (seen written 9 hours off), while the file name is when this user saved it, i.e. when
+/// they were in the world the photo should be linked to.
+pub fn choose_time(
+    xmp: Option<NaiveDateTime>,
+    name: Option<NaiveDateTime>,
+    mtime: NaiveDateTime,
+) -> (NaiveDateTime, TimeSource) {
+    match (xmp, name) {
+        (Some(x), Some(n)) if (x - n).num_seconds().abs() > XMP_NAME_TOLERANCE_SECS => (n, TimeSource::Name),
+        (Some(x), _) => (x, TimeSource::Xmp),
+        (None, Some(n)) => (n, TimeSource::Name),
+        (None, None) => (mtime, TimeSource::Mtime),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PhotoMeta {
     pub taken_at: NaiveDateTime,
@@ -343,13 +366,7 @@ pub fn read_meta(path: &Path, mtime: NaiveDateTime, read_content: bool) -> Photo
     }
 
     let name_time = path.file_name().and_then(|n| time_from_name(&n.to_string_lossy()));
-    let (taken_at, time_source) = if let Some(t) = xmp.create_date {
-        (t, TimeSource::Xmp)
-    } else if let Some(t) = name_time {
-        (t, TimeSource::Name)
-    } else {
-        (mtime, TimeSource::Mtime)
-    };
+    let (taken_at, time_source) = choose_time(xmp.create_date, name_time, mtime);
     PhotoMeta {
         taken_at,
         time_source,

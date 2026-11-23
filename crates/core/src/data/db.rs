@@ -1,5 +1,6 @@
 //! SQLite connection setup and schema. The schema is unchanged from 0.1.x, so a
-//! database created by a 0.1.x version opens without migration.
+//! database created by a 0.1.x version opens without migration; [`ensure_created`] only
+//! runs one-time data fixes recorded by [`SCHEMA_VERSION`].
 
 use std::path::Path;
 use std::time::Duration;
@@ -35,15 +36,23 @@ pub fn checkpoint_truncate(conn: &Connection) -> Result<()> {
 /// Creates all tables, FTS5 index, triggers and indices if they do not exist yet.
 pub fn ensure_created(conn: &Connection) -> Result<()> {
     conn.execute_batch(SCHEMA)?;
-    // Every statement above is idempotent; the version only records what the file contains.
-    if schema_version(conn)? < SCHEMA_VERSION {
-        conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    // Every statement above is idempotent; the version records which data fixes have run.
+    let version = schema_version(conn)?;
+    if version < SCHEMA_VERSION {
+        let tx = conn.unchecked_transaction()?;
+        if version < 2 {
+            // Photo times chosen before the XMP / file-name disagreement rule.
+            crate::photos::retime_xmp_rows(&tx)?;
+        }
+        tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        tx.commit()?;
     }
     Ok(())
 }
 
 /// Current schema version written to `PRAGMA user_version` (0 = databases from before 0.2.0).
-pub const SCHEMA_VERSION: i64 = 1;
+/// 2: photo times re-chosen where the XMP date is far from the file-name date.
+pub const SCHEMA_VERSION: i64 = 2;
 
 pub fn schema_version(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("PRAGMA user_version;", [], |r| r.get::<_, i64>(0))?)

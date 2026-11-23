@@ -10,7 +10,7 @@ use rusqlite::{params, Connection};
 use serde::Serialize;
 use walkdir::WalkDir;
 
-use super::meta::read_meta;
+use super::meta::{choose_time, read_meta, time_from_name, TimeSource};
 use crate::data::db;
 use crate::Result;
 
@@ -231,6 +231,34 @@ pub fn scan_folders(
     relink_visits(&tx)?;
     tx.commit()?;
     Ok(summary)
+}
+
+/// Re-applies [`choose_time`] to rows whose time came from XMP, so a photo whose XMP date is
+/// far from the date in its name (a saved VRChat print) gets the name's date. Uses only the
+/// stored time and the file name; no file is read. Relinks visits when a row changed.
+/// Returns the number of rows changed.
+pub fn retime_xmp_rows(conn: &Connection) -> Result<usize> {
+    let rows: Vec<(i64, String, String)> = {
+        let mut stmt = conn.prepare("SELECT id, file_name, taken_at FROM photos WHERE time_source = 'xmp'")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    let mut update = conn.prepare("UPDATE photos SET taken_at = ?2, time_source = ?3 WHERE id = ?1")?;
+    let mut changed = 0;
+    for (id, file_name, taken_at) in rows {
+        let Ok(xmp) = NaiveDateTime::parse_from_str(&taken_at, db::TS_FORMAT) else {
+            continue;
+        };
+        let (t, source) = choose_time(Some(xmp), time_from_name(&file_name), xmp);
+        if source != TimeSource::Xmp {
+            update.execute(params![id, db::ts(t), source.as_str()])?;
+            changed += 1;
+        }
+    }
+    if changed > 0 {
+        relink_visits(conn)?;
+    }
+    Ok(changed)
 }
 
 /// Re-derives `photos.visit_id` from `taken_at` (visit ids change on every log re-import).

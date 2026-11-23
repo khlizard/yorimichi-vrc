@@ -2,9 +2,9 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
-use common::{d, log, Fixture};
+use common::{add_photo, d, log, Fixture};
 use yorimichi_core::data::photo_query::{PhotoFilter, PhotoService};
-use yorimichi_core::data::ImportService;
+use yorimichi_core::data::{db, ImportService};
 use yorimichi_core::photos::{relink_visits, scan_folders};
 
 const FRIEND: &str = "usr_11111111-1111-1111-1111-111111111111";
@@ -188,6 +188,36 @@ fn relink_links_inside_visit_and_survives_reimport() {
     assert_eq!(relink_visits(&fx.conn).unwrap(), 1);
     assert_eq!(visit_of("in"), Some(new_visit));
     assert_eq!(visit_of("out"), None);
+}
+
+#[test]
+fn upgrade_retimes_photos_whose_xmp_date_is_far_from_the_name() {
+    let fx = Fixture::new();
+    let svc = ImportService::new(&fx.conn);
+    let log_path = fx.write_log("output_log_2026-06-23_21-00-00.txt", &visit_log("2026-06-23", 1));
+    svc.import_file(&log_path, None).unwrap();
+
+    // Rows as an older version stored them: the time taken from the XMP as is.
+    let print = add_photo(&fx, "vrc_2026-06-23_21-30-00.147_2048x1440.jpg", "2026-06-24 06:29:30");
+    let camera = add_photo(&fx, "VRChat_2026-06-23_21-40-00.000_3840x2160.png", "2026-06-23 21:40:02");
+    let no_name = add_photo(&fx, "edited.png", "2026-06-23 21:50:00");
+    fx.conn.execute("UPDATE photos SET time_source = 'xmp'", []).unwrap();
+    let visit: i64 = fx.conn.query_row("SELECT id FROM visits", [], |r| r.get(0)).unwrap();
+    let row = |id: i64| -> (String, String, Option<i64>) {
+        fx.conn
+            .query_row("SELECT taken_at, time_source, visit_id FROM photos WHERE id = ?1", [id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap()
+    };
+    assert_eq!(row(print).2, None);
+
+    fx.conn.pragma_update(None, "user_version", 1).unwrap();
+    db::ensure_created(&fx.conn).unwrap();
+    assert_eq!(db::schema_version(&fx.conn).unwrap(), db::SCHEMA_VERSION);
+    assert_eq!(row(print), ("2026-06-23 21:30:00".into(), "name".into(), Some(visit)));
+    assert_eq!(row(camera), ("2026-06-23 21:40:02".into(), "xmp".into(), Some(visit)));
+    assert_eq!(row(no_name), ("2026-06-23 21:50:00".into(), "xmp".into(), Some(visit)));
 }
 
 /// Imports one visit on 2026-06-23 (21:00-22:00, friend present 21:10-21:20) and returns the photo dir.

@@ -3,7 +3,7 @@ mod common;
 use std::io::Cursor;
 
 use common::dt;
-use yorimichi_core::photos::{parse_xmp, read_meta, read_png_info, time_from_name, TimeSource};
+use yorimichi_core::photos::{choose_time, parse_xmp, read_meta, read_png_info, time_from_name, TimeSource};
 
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;
@@ -168,8 +168,8 @@ fn read_meta_priority() {
     let dir = tempfile::tempdir().unwrap();
     let mtime = dt(2020, 1, 1, 0, 0, 0);
 
-    // XMP beats the file name.
-    let p = dir.path().join("VRChat_2022-01-02_03-04-05.678_100x50.png");
+    // XMP beats the file name when the two agree (saving takes a few seconds).
+    let p = dir.path().join("VRChat_2026-01-10_20-29-58.678_100x50.png");
     std::fs::write(&p, png_with_itxt(100, 50, "XML:com.adobe.xmp", XMP)).unwrap();
     let m = read_meta(&p, mtime, true);
     assert_eq!(m.time_source, TimeSource::Xmp);
@@ -181,9 +181,19 @@ fn read_meta_priority() {
     // Without reading content only the file name counts.
     let m = read_meta(&p, mtime, false);
     assert_eq!(m.time_source, TimeSource::Name);
-    assert_eq!(m.taken_at, dt(2022, 1, 2, 3, 4, 5));
+    assert_eq!(m.taken_at, dt(2026, 1, 10, 20, 29, 58));
     assert_eq!(m.width, None);
     assert_eq!(m.world_id, None);
+
+    // When they disagree (a saved print: the XMP has its creator's date), the file name wins.
+    // The XMP's other values are still read.
+    let far = dir.path().join("VRChat_2022-01-02_03-04-05.678_100x50.png");
+    std::fs::write(&far, png_with_itxt(100, 50, "XML:com.adobe.xmp", XMP)).unwrap();
+    let m = read_meta(&far, mtime, true);
+    assert_eq!(m.time_source, TimeSource::Name);
+    assert_eq!(m.taken_at, dt(2022, 1, 2, 3, 4, 5));
+    assert_eq!(m.world_name.as_deref(), Some("Sample & World"));
+    assert_eq!((m.width, m.height), (Some(100), Some(50)));
 
     // Plain PNG with a plain name falls back to mtime.
     let p2 = dir.path().join("plain.png");
@@ -197,6 +207,27 @@ fn read_meta_priority() {
     let m = read_meta(&dir.path().join("missing.png"), mtime, true);
     assert_eq!(m.taken_at, mtime);
     assert_eq!(m.width, None);
+}
+
+#[test]
+fn choose_time_trusts_the_name_when_xmp_is_far_off() {
+    let mtime = dt(2020, 1, 1, 0, 0, 0);
+    let name = dt(2026, 11, 23, 0, 3, 28);
+    // A camera photo: the XMP is written a moment after the name's time.
+    let close = dt(2026, 11, 23, 0, 3, 30);
+    assert_eq!(choose_time(Some(close), Some(name), mtime), (close, TimeSource::Xmp));
+    // 5 minutes apart is still the same shot; more than that is not.
+    let edge = dt(2026, 11, 23, 0, 8, 28);
+    assert_eq!(choose_time(Some(edge), Some(name), mtime), (edge, TimeSource::Xmp));
+    let past = dt(2026, 11, 22, 23, 58, 27);
+    assert_eq!(choose_time(Some(past), Some(name), mtime), (name, TimeSource::Name));
+    // A saved print whose XMP date was written 9 hours off.
+    let print = dt(2026, 11, 23, 9, 2, 58);
+    assert_eq!(choose_time(Some(print), Some(name), mtime), (name, TimeSource::Name));
+    // With only one of them, that one is used.
+    assert_eq!(choose_time(Some(print), None, mtime), (print, TimeSource::Xmp));
+    assert_eq!(choose_time(None, Some(name), mtime), (name, TimeSource::Name));
+    assert_eq!(choose_time(None, None, mtime), (mtime, TimeSource::Mtime));
 }
 
 #[test]
@@ -222,7 +253,7 @@ fn read_meta_jpeg_uses_xmp_date_and_world() {
     seg.extend_from_slice(&payload);
     let with_xmp = [&jpg[..2], &seg[..], &jpg[2..]].concat();
 
-    let p = dir.path().join("VRChat_2022-01-02_03-04-05.678_30x20.jpg");
+    let p = dir.path().join("VRChat_2026-01-10_20-29-58.678_30x20.jpg");
     std::fs::write(&p, &with_xmp).unwrap();
     let m = read_meta(&p, dt(2020, 1, 1, 0, 0, 0), true);
     assert_eq!(m.time_source, TimeSource::Xmp);

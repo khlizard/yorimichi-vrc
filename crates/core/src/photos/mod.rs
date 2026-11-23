@@ -11,8 +11,11 @@ pub mod scan;
 pub mod thumbs;
 pub mod xmp_write;
 
-pub use meta::{parse_xmp, read_jpeg_xmp, read_meta, read_png_info, time_from_name, PhotoMeta, PngInfo, TimeSource, XmpInfo};
-pub use scan::{is_online_only, refresh_file, relink_visits, scan_folders, ScanSummary, PHOTO_EXTENSIONS};
+pub use meta::{
+    choose_time, parse_xmp, read_jpeg_xmp, read_meta, read_png_info, time_from_name, PhotoMeta, PngInfo, TimeSource,
+    XmpInfo, XMP_NAME_TOLERANCE_SECS,
+};
+pub use scan::{is_online_only, refresh_file, relink_visits, retime_xmp_rows, scan_folders, ScanSummary, PHOTO_EXTENSIONS};
 pub use thumbs::{jpeg_bytes, make_thumbnail, rgba_pixels};
 pub use xmp_write::{
     build_xmp, insert_xmp, remove_our_xmp_from_file, strip_our_xmp, write_xmp_to_file, xmp_presence, XmpFields,
